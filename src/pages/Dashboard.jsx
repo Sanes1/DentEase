@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './Dashboard.css';
-import { collection, getDocs } from "firebase/firestore";
+import { collection, getDocs, doc, updateDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import {
   BarChart,
@@ -44,10 +44,53 @@ const Dashboard = () => {
         }));
         setAppointments(data);
 
-       const uniquePatients = Array.from(
-          new Map(data.map(a => [a.userEmail, a])).values()
-        );
-        setPatients(uniquePatients);
+       /* ---------- REPLACED uniquePatients WITH patients-lastAppointment-per-service LOGIC ---------- */
+       // Build patients list allowing same name+date but different service to be separate rows
+       const patientMap = new Map();
+
+       data.forEach(appt => {
+         const name = appt.userName;
+         // prefer appointmentDate, fallback to date
+         const dateValue = appt.appointmentDate || appt.date;
+         // normalize date string for grouping/display
+         const dateStr = dateValue ? new Date(dateValue).toLocaleDateString() : '';
+         // normalize services to a string (handles array or string)
+         const services = appt.services
+           ? (Array.isArray(appt.services) ? appt.services.join(", ") : String(appt.services))
+           : '-';
+
+         // skip entries without a name
+         if (!name) return;
+
+         // Use combo key: name + date + services — this allows same name+date but different service to be separate
+         const key = `${name}__${dateStr}__${services}`;
+
+         if (!patientMap.has(key)) {
+           patientMap.set(key, {
+             id: appt.id,
+             userName: name,
+             services,
+             lastAppointmentDate: dateValue ? new Date(dateValue) : new Date(0),
+           });
+         } else {
+           // if duplicate exact key exists, keep the one with later time if you want — currently we ignore duplicates
+         }
+       });
+
+       // Convert to array, sort by newest lastAppointmentDate first, and format lastAppointment for display
+       const patientsList = Array.from(patientMap.values())
+         .sort((a, b) => new Date(b.lastAppointmentDate) - new Date(a.lastAppointmentDate))
+         .map(p => ({
+           id: p.id,
+           userName: p.userName,
+           services: p.services,
+           lastAppointment: p.lastAppointmentDate instanceof Date && p.lastAppointmentDate.getTime() !== 0
+             ? p.lastAppointmentDate.toLocaleDateString()
+             : '',
+         }));
+
+       setPatients(patientsList);
+       /* ---------- END patients-lastAppointment-per-service LOGIC ---------- */
 
         // Compute analytics
         computeAnalytics(data, selectedFilter);
@@ -101,6 +144,28 @@ const Dashboard = () => {
     const filter = e.target.value;
     setSelectedFilter(filter);
     computeAnalytics(appointments, filter);
+  };
+
+  // === Update appointment status in Firestore & local state ===
+  const updateAppointmentStatus = async (id, newStatus) => {
+    try {
+      const apptRef = doc(db, "appointments", id);
+      await updateDoc(apptRef, { status: newStatus });
+
+      // Update local state so the UI reflects the change immediately
+      setAppointments(prev =>
+        prev.map(appt =>
+          appt.id === id ? { ...appt, status: newStatus } : appt
+        )
+      );
+
+      // Optionally, recompute patients/analytics if needed:
+      // (if you want to reflect status-based filters in analytics/patients)
+      // computeAnalytics(appointments.map(a => a.id === id ? { ...a, status: newStatus } : a), selectedFilter);
+
+    } catch (error) {
+      console.error("Error updating status:", error);
+    }
   };
 
   const renderContent = () => {
@@ -178,7 +243,7 @@ const Dashboard = () => {
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th>Patient Email</th>
+                    <th>Patient Name</th>
                     <th>Service</th>
                     <th>Date</th>
                     <th>Time</th>
@@ -187,7 +252,7 @@ const Dashboard = () => {
                 <tbody>
                   {appointments.map(appt => (
                     <tr key={appt.id}>
-                      <td>{appt.userEmail}</td>
+                      <td>{appt.userName}</td>
                       <td>{appt.services ? appt.services.join(", ") : '-'}</td>
                       <td>{appt.appointmentDate}</td>
                       <td>{appt.time}</td>
@@ -246,7 +311,7 @@ const Dashboard = () => {
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th>Patient Email</th>
+                    <th>Patient Name</th>
                     <th>Doctor</th>
                     <th>Service</th>
                     <th>Date</th>
@@ -258,15 +323,25 @@ const Dashboard = () => {
                 <tbody>
                   {appointments.map(appt => (
                     <tr key={appt.id}>
-                      <td>{appt.userEmail}</td>
+                      <td>{appt.userName}</td>
                       <td>{appt.doctor}</td>
                       <td>{appt.services ? appt.services.join(", ") : '-'}</td>
                       <td>{appt.appointmentDate}</td>
                       <td>{appt.time}</td>
                       <td><span className={`status-badge ${appt.status}`}>{appt.status}</span></td>
                       <td>
-                        <button className="btn-sm btn-success">Approve</button>
-                        <button className="btn-sm btn-danger">Decline</button>
+                        <button
+                          className="btn-sm btn-success"
+                          onClick={() => updateAppointmentStatus(appt.id, "approved")}
+                        >
+                          Approve
+                        </button>
+                        <button
+                          className="btn-sm btn-danger"
+                          onClick={() => updateAppointmentStatus(appt.id, "declined")}
+                        >
+                          Decline
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -286,15 +361,17 @@ const Dashboard = () => {
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th>Email</th>
+                    <th>Name</th>
+                    <th>Service</th>
                     <th>Last Appointment</th>
                   </tr>
                 </thead>
                 <tbody>
                   {patients.map(patient => (
                     <tr key={patient.id}>
-                      <td>{patient.userEmail}</td>
-                      <td>{patient.appointmentDate}</td>
+                      <td>{patient.userName}</td>
+                      <td>{patient.services}</td>
+                      <td>{patient.lastAppointment}</td>
                     </tr>
                   ))}
                 </tbody>
