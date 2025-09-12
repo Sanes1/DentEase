@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './Dashboard.css';
-import { collection, doc, updateDoc, onSnapshot, query, orderBy } from "firebase/firestore";
+import { collection, doc, updateDoc, onSnapshot, query, orderBy, addDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase";
 import {
   BarChart,
@@ -42,7 +42,8 @@ const Dashboard = () => {
   const [conversations, setConversations] = useState([]);
   const [selectedConversation, setSelectedConversation] = useState(null);
   const [messageSearch, setMessageSearch] = useState('');
-  const [isAdminOnline, setIsAdminOnline] = useState(false); // Toggle for admin online status
+  const [newMessage, setNewMessage] = useState('');
+  const [isAdminOnline, setIsAdminOnline] = useState(false);
 
   // Patient tab states
   const [patientSearch, setPatientSearch] = useState("");
@@ -96,6 +97,34 @@ const Dashboard = () => {
     if (diffHours < 24) return `${diffHours}h`;
     if (diffDays < 7) return `${diffDays}d`;
     return date.toLocaleDateString();
+  };
+
+  // Function to send a message
+  const sendMessage = async () => {
+    if (!newMessage.trim() || !selectedConversation) return;
+
+    try {
+      const messagesRef = collection(db, "artifacts", "default-app-id", "public", "data", "messages");
+      await addDoc(messagesRef, {
+        text: newMessage.trim(),
+        senderId: isAdminOnline ? 'admin' : 'ai',
+        senderName: isAdminOnline ? 'Dr. Jessica Fano' : 'AI Assistant',
+        timestamp: serverTimestamp(),
+        recipientId: selectedConversation.userId
+      });
+
+      setNewMessage('');
+    } catch (error) {
+      console.error("Error sending message:", error);
+    }
+  };
+
+  // Handle Enter key press
+  const handleKeyPress = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
   };
 
   // Fetch appointments from Firebase (real-time)
@@ -500,107 +529,142 @@ const Dashboard = () => {
                 </ResponsiveContainer>
               </div>
 
-             <div className="chart-container" style={{ height: 300, marginTop: '20px', flexDirection: 'column', display: 'flex' }}>
-  <h3 className="pie-chart-header">Top Services</h3>
-  <ResponsiveContainer width="100%" height="100%">
-    <PieChart>
-      <Pie
-        data={pieData}
-        dataKey="value"
-        nameKey="name"
-        cx="50%"
-        cy="50%"
-        outerRadius={80}
-        fill="#8884d8"
-        label
-      >
-        {pieData.map((entry, index) => (
-          <Cell key={`cell-${index}`} fill={pieColors[index % pieColors.length]} />
-        ))}
-      </Pie>
-      <Tooltip />
-      <Legend layout="horizontal" verticalAlign="bottom" align="center" />
-    </PieChart>
-  </ResponsiveContainer>
-</div>
-
-            </div>
-          </div>
-        );
-      }
-
-      case 'appointment': {
-        return (
-          <div className="dashboard-content">
-            <div className="appointment-controls">
-              <div className="filter-calendar">
-                <select
-                  className="filter-select"
-                  value={appointmentFilter}
-                  onChange={(e) => setAppointmentFilter(e.target.value)}
-                >
-                  <option value="all">All Appointments</option>
-                  <option value="pending">Pending</option>
-                  <option value="approved">Approved</option>
-                  <option value="declined">Declined</option>
-                </select>
-                <button className="calendar-btn">📅 Calendar View</button>
+              <div className="chart-container" style={{ height: 300, marginTop: '20px', flexDirection: 'column', display: 'flex' }}>
+                <h3 className="pie-chart-header">Top Services</h3>
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={pieData}
+                      dataKey="value"
+                      nameKey="name"
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={80}
+                      fill="#8884d8"
+                      label
+                    >
+                      {pieData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={pieColors[index % pieColors.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                    <Legend layout="horizontal" verticalAlign="bottom" align="center" />
+                  </PieChart>
+                </ResponsiveContainer>
               </div>
             </div>
-            <div className="appointment-list">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Patient Name</th>
-                    <th>Doctor</th>
-                    <th>Service</th>
-                    <th>Date</th>
-                    <th>Time</th>
-                    <th>Status</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {appointments
-                    .filter(appt => appointmentFilter === 'all' ? true : appt.status === appointmentFilter)
-                    .map(appt => (
-                      <tr key={appt.id}>
-                        <td>{appt.userName}</td>
-                        <td>{appt.doctor || '-'}</td>
-                        <td>{getServicesString(appt)}</td>
-                        <td>{formatDate(appt.appointmentDate || appt.date)}</td>
-                        <td>{appt.time || '-'}</td>
-                        <td>
-                          <span className={`status-badge ${appt.status}`}>
-                            {appt.status ? appt.status.charAt(0).toUpperCase() + appt.status.slice(1) : '-'}
-                          </span>
-                        </td>
-                        <td>
-                          {appt.status === 'pending' && (
-                            <>
-                              <button
-                                className="btn-sm btn-success"
-                                onClick={() => updateAppointmentStatus(appt.id, "approved")}
-                              >
-                                Approve
-                              </button>
-                              <button
-                                className="btn-sm btn-danger"
-                                onClick={() => updateAppointmentStatus(appt.id, "declined")}
-                              >
-                                Decline
-                              </button>
-                            </>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                </tbody>
-              </table>
-            </div>
           </div>
         );
       }
+
+     case 'appointment': {
+  return (
+    <div className="dashboard-content">
+      <div className="appointment-controls">
+        <div className="filter-calendar">
+          <select
+            className="filter-select"
+            value={appointmentFilter}
+            onChange={(e) => {
+              setAppointmentFilter(e.target.value);
+              setCurrentPage(1); // reset page when filter changes
+            }}
+          >
+            <option value="all">All Appointments</option>
+            <option value="pending">Pending</option>
+            <option value="approved">Approved</option>
+            <option value="declined">Declined</option>
+          </select>
+          <button className="calendar-btn">📅 Calendar View</button>
+        </div>
+      </div>
+
+      <div className="appointment-list">
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Patient Name</th>
+              <th>Doctor</th>
+              <th>Service</th>
+              <th>Date</th>
+              <th>Time</th>
+              <th>Status</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {appointments
+              .filter(appt => appointmentFilter === 'all' ? true : appt.status === appointmentFilter)
+              .slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage)
+              .map(appt => (
+                <tr key={appt.id}>
+                  <td>{appt.userName}</td>
+                  <td>{appt.doctor || '-'}</td>
+                  <td>{getServicesString(appt)}</td>
+                  <td>{formatDate(appt.appointmentDate || appt.date)}</td>
+                  <td>{appt.time || '-'}</td>
+                  <td>
+                    <span className={`status-badge ${appt.status}`}>
+                      {appt.status ? appt.status.charAt(0).toUpperCase() + appt.status.slice(1) : '-'}
+                    </span>
+                  </td>
+                  <td>
+                    {appt.status === 'pending' && (
+                      <>
+                        <button
+                          className="btn-sm btn-success"
+                          onClick={() => updateAppointmentStatus(appt.id, "approved")}
+                        >
+                          Approve
+                        </button>
+                        <button
+                          className="btn-sm btn-danger"
+                          onClick={() => updateAppointmentStatus(appt.id, "declined")}
+                        >
+                          Decline
+                        </button>
+                      </>
+                    )}
+                  </td>
+                </tr>
+              ))}
+          </tbody>
+        </table>
+
+        {/* Centered Pagination Controls */}
+        <div
+          className="pagination-controls"
+          style={{
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            gap: '10px',
+            marginTop: '15px'
+          }}
+        >
+          <button
+            className="calendar-btn"
+            disabled={currentPage === 1}
+            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+          >
+            Prev
+          </button>
+
+          <span>Page {currentPage} of {totalPages}</span>
+
+          <button
+            className="calendar-btn"
+            disabled={currentPage === totalPages}
+            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+          >
+            Next
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 
       case 'patient': {
         return (
@@ -687,9 +751,7 @@ const Dashboard = () => {
         return (
           <div className="dashboard-content">
             <div className="messenger-container" style={{ display: 'flex', height: '600px', border: '1px solid #ddd', borderRadius: '8px', overflow: 'hidden' }}>
-              {/* Left Panel - Conversations List */}
               <div className="conversations-panel" style={{ width: '350px', borderRight: '1px solid #ddd', display: 'flex', flexDirection: 'column' }}>
-                {/* Header */}
                 <div style={{ padding: '15px', borderBottom: '1px solid #eee', backgroundColor: '#f8f9fa' }}>
                   <h3 style={{ margin: '0 0 10px 0', fontSize: '18px' }}>Messages</h3>
                   <div style={{ position: 'relative' }}>
@@ -708,7 +770,6 @@ const Dashboard = () => {
                       }}
                     />
                   </div>
-                  {/* Admin Online Toggle */}
                   <div style={{ marginTop: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <label style={{ fontSize: '14px', color: '#666' }}>Admin Status:</label>
                     <button
@@ -728,7 +789,6 @@ const Dashboard = () => {
                   </div>
                 </div>
 
-                {/* Conversations List */}
                 <div style={{ flex: 1, overflowY: 'auto' }}>
                   {filteredConversations.length === 0 ? (
                     <div style={{ padding: '20px', textAlign: 'center', color: '#666' }}>
@@ -743,8 +803,7 @@ const Dashboard = () => {
                           padding: '12px 15px',
                           borderBottom: '1px solid #eee',
                           cursor: 'pointer',
-                          backgroundColor: selectedConversation?.userId === conv.userId ? '#e3f2fd' : 'white',
-                          ':hover': { backgroundColor: '#f5f5f5' }
+                          backgroundColor: selectedConversation?.userId === conv.userId ? '#e3f2fd' : 'white'
                         }}
                         onMouseEnter={(e) => {
                           if (selectedConversation?.userId !== conv.userId) {
@@ -758,7 +817,6 @@ const Dashboard = () => {
                         }}
                       >
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                          {/* Avatar */}
                           <div style={{
                             width: '40px',
                             height: '40px',
@@ -830,11 +888,9 @@ const Dashboard = () => {
                 </div>
               </div>
 
-              {/* Right Panel - Chat View */}
               <div className="chat-panel" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
                 {selectedConversation ? (
                   <>
-                    {/* Chat Header */}
                     <div style={{ 
                       padding: '15px 20px', 
                       borderBottom: '1px solid #eee', 
@@ -867,7 +923,6 @@ const Dashboard = () => {
                       </div>
                     </div>
 
-                    {/* Messages */}
                     <div style={{ 
                       flex: 1, 
                       padding: '15px', 
@@ -880,7 +935,6 @@ const Dashboard = () => {
                       {selectedConversation.messages.map(msg => {
                         const isFromPatient = msg.senderId !== 'ai' && msg.senderId !== 'admin';
                         const isFromAdmin = msg.senderId === 'admin';
-                        const isFromAI = msg.senderId === 'ai';
                         
                         return (
                           <div
@@ -890,7 +944,6 @@ const Dashboard = () => {
                               maxWidth: '70%'
                             }}
                           >
-                            {/* Sender name for non-patient messages */}
                             {!isFromPatient && (
                               <div style={{
                                 fontSize: '11px',
@@ -903,7 +956,7 @@ const Dashboard = () => {
                             )}
                             
                             <div style={{
-                              background: isFromPatient ? '#white' : (isFromAdmin ? '#4caf50' : '#2196f3'),
+                              background: isFromPatient ? 'white' : (isFromAdmin ? '#4caf50' : '#2196f3'),
                               color: isFromPatient ? '#000' : '#fff',
                               padding: '10px 12px',
                               borderRadius: isFromPatient ? '18px 18px 18px 4px' : '18px 18px 4px 18px',
@@ -930,7 +983,6 @@ const Dashboard = () => {
                       })}
                     </div>
 
-                    {/* Message Input */}
                     <div style={{ 
                       padding: '15px', 
                       borderTop: '1px solid #eee',
@@ -940,43 +992,46 @@ const Dashboard = () => {
                         <input
                           type="text"
                           placeholder="Type a message..."
+                          value={newMessage}
+                          onChange={(e) => setNewMessage(e.target.value)}
+                          onKeyPress={handleKeyPress}
                           style={{
                             flex: 1,
                             padding: '10px 15px',
                             border: '1px solid #ddd',
                             borderRadius: '20px',
                             fontSize: '14px',
-                            outline: 'none',
-                            resize: 'none'
-                          }}
-                          onKeyPress={(e) => {
-                            if (e.key === 'Enter') {
-                              // Add logic to send message
-                              console.log('Send message:', e.target.value);
-                              e.target.value = '';
-                            }
+                            outline: 'none'
                           }}
                         />
-                        <button style={{
-                          backgroundColor: '#4caf50',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '50%',
-                          width: '40px',
-                          height: '40px',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          fontSize: '18px'
-                        }}>
+                        <button 
+                          onClick={(e) => {
+                            e.preventDefault();
+                            console.log('Button clicked, calling sendMessage');
+                            sendMessage();
+                          }}
+                          disabled={!newMessage.trim()}
+                          type="button"
+                          style={{
+                            backgroundColor: newMessage.trim() ? '#4caf50' : '#ccc',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '50%',
+                            width: '40px',
+                            height: '40px',
+                            cursor: newMessage.trim() ? 'pointer' : 'not-allowed',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '18px'
+                          }}
+                        >
                           ➤
                         </button>
                       </div>
                     </div>
                   </>
                 ) : (
-                  /* No conversation selected */
                   <div style={{
                     flex: 1,
                     display: 'flex',
