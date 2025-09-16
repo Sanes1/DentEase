@@ -1,7 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './Dashboard.css';
+<<<<<<< HEAD
 import { collection, doc, updateDoc, onSnapshot, query, orderBy, addDoc, serverTimestamp, where, getDocs } from "firebase/firestore";
+=======
+import { collection, doc, updateDoc, onSnapshot, query, orderBy, addDoc, serverTimestamp } from "firebase/firestore";
+>>>>>>> 4b84aedac5ea083aff5a1d93e8affee87f716a17
 import { db } from "../firebase";
 import {
   BarChart,
@@ -46,6 +50,7 @@ const Dashboard = () => {
   const [showCalendar, setShowCalendar] = useState(false);
   const [calendarDate, setCalendarDate] = useState(new Date());
 
+<<<<<<< HEAD
   // Message states - Updated for real messenger
   const [chatRooms, setChatRooms] = useState([]);
   const [selectedChatRoom, setSelectedChatRoom] = useState(null);
@@ -54,6 +59,15 @@ const Dashboard = () => {
   const [messageSearch, setMessageSearch] = useState('');
   const [isAdminOnline, setIsAdminOnline] = useState(true);
   const [adminLastSeen, setAdminLastSeen] = useState(new Date());
+=======
+  // Message states
+  const [messages, setMessages] = useState([]);
+  const [conversations, setConversations] = useState([]);
+  const [selectedConversation, setSelectedConversation] = useState(null);
+  const [messageSearch, setMessageSearch] = useState('');
+  const [newMessage, setNewMessage] = useState('');
+  const [isAdminOnline, setIsAdminOnline] = useState(false);
+>>>>>>> 4b84aedac5ea083aff5a1d93e8affee87f716a17
 
   // Patient tab states
   const [patientSearch, setPatientSearch] = useState("");
@@ -122,6 +136,7 @@ const Dashboard = () => {
     return date.toLocaleDateString();
   };
 
+<<<<<<< HEAD
   const formatMessageTime = (timestamp) => {
     if (!timestamp) return '';
     const date = new Date(timestamp);
@@ -150,6 +165,8 @@ const Dashboard = () => {
     return diffMins <= 5 ? 'online' : 'offline';
   };
 
+=======
+>>>>>>> 4b84aedac5ea083aff5a1d93e8affee87f716a17
   // Derive approved appointments by date
   const approvedAppointmentsByDate = appointments
     .filter(a => a.status === 'approved')
@@ -160,6 +177,7 @@ const Dashboard = () => {
       return acc;
     }, {});
 
+<<<<<<< HEAD
   // Function to send a message in the chat room
   const sendMessage = async () => {
     if (!newMessage.trim() || !selectedChatRoom) return;
@@ -182,6 +200,20 @@ const Dashboard = () => {
         lastMessageTime: serverTimestamp(),
         lastMessageSender: 'admin',
         adminLastSeen: serverTimestamp()
+=======
+  // Function to send a message
+  const sendMessage = async () => {
+    if (!newMessage.trim() || !selectedConversation) return;
+
+    try {
+      const messagesRef = collection(db, "artifacts", "default-app-id", "public", "data", "messages");
+      await addDoc(messagesRef, {
+        text: newMessage.trim(),
+        senderId: isAdminOnline ? 'admin' : 'ai',
+        senderName: isAdminOnline ? 'Dr. Jessica Fano' : 'AI Assistant',
+        timestamp: serverTimestamp(),
+        recipientId: selectedConversation.userId
+>>>>>>> 4b84aedac5ea083aff5a1d93e8affee87f716a17
       });
 
       setNewMessage('');
@@ -198,6 +230,7 @@ const Dashboard = () => {
     }
   };
 
+<<<<<<< HEAD
   // Mark messages as read when admin views them
   const markMessagesAsRead = async (chatRoomId) => {
     try {
@@ -222,6 +255,8 @@ const Dashboard = () => {
     }
   };
 
+=======
+>>>>>>> 4b84aedac5ea083aff5a1d93e8affee87f716a17
   // Fetch appointments from Firebase (real-time)
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, "appointments"), (querySnapshot) => {
@@ -285,6 +320,7 @@ const Dashboard = () => {
     return () => unsubscribe();
   }, [appointments]);
 
+<<<<<<< HEAD
   // Fetch chat rooms from Firebase (real-time)
   useEffect(() => {
     const chatRoomsRef = collection(db, "chat_rooms");
@@ -334,6 +370,12 @@ const Dashboard = () => {
 
     const messagesRef = collection(db, "chat_rooms", selectedChatRoom.id, "messages");
     const messagesQuery = query(messagesRef, orderBy("timestamp", "asc"));
+=======
+  // Fetch messages from Firebase (real-time)
+  useEffect(() => {
+    const messagesRef = collection(db, "artifacts", "default-app-id", "public", "data", "messages");
+    const messagesQuery = query(messagesRef, orderBy("timestamp", "desc"));
+>>>>>>> 4b84aedac5ea083aff5a1d93e8affee87f716a17
 
     const unsubscribe = onSnapshot(messagesQuery, (snapshot) => {
       const msgs = snapshot.docs.map(doc => {
@@ -343,20 +385,87 @@ const Dashboard = () => {
           timestamp: data.timestamp?.toDate ? data.timestamp.toDate() : data.timestamp,
           text: data.text || "",
           senderId: data.senderId || "",
+<<<<<<< HEAD
           senderName: data.senderName || data.senderId || "",
           senderType: data.senderType || "user",
           isRead: data.isRead || false
+=======
+          senderName: data.senderName || data.senderId || ""
+>>>>>>> 4b84aedac5ea083aff5a1d93e8affee87f716a17
         };
       });
       setMessages(msgs);
       
+<<<<<<< HEAD
       // Mark messages as read when admin opens the chat
       if (msgs.length > 0) {
         markMessagesAsRead(selectedChatRoom.id);
+=======
+      // Group messages into conversations
+      const conversationMap = {};
+      msgs.forEach(msg => {
+        const userId = msg.senderId === 'ai' || msg.senderId === 'admin' ? null : msg.senderId;
+        if (!userId) return;
+        
+        if (!conversationMap[userId]) {
+          conversationMap[userId] = {
+            userId,
+            userName: msg.senderName || msg.senderId,
+            messages: [],
+            lastMessage: null,
+            lastMessageTime: null,
+            unreadCount: 0
+          };
+        }
+        conversationMap[userId].messages.push(msg);
+      });
+
+      // Add AI responses to conversations
+      msgs.forEach(msg => {
+        if (msg.senderId === 'ai' || msg.senderId === 'admin') {
+          // Find the most recent user message before this AI/admin message
+          const userMsgs = msgs.filter(m => 
+            m.timestamp < msg.timestamp && 
+            m.senderId !== 'ai' && 
+            m.senderId !== 'admin'
+          );
+          if (userMsgs.length > 0) {
+            const recentUser = userMsgs[0];
+            if (conversationMap[recentUser.senderId]) {
+              conversationMap[recentUser.senderId].messages.push(msg);
+            }
+          }
+        }
+      });
+
+      // Sort messages within each conversation and set last message
+      Object.values(conversationMap).forEach(conv => {
+        conv.messages.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+        if (conv.messages.length > 0) {
+          const lastMsg = conv.messages[conv.messages.length - 1];
+          conv.lastMessage = lastMsg.text;
+          conv.lastMessageTime = lastMsg.timestamp;
+        }
+      });
+
+      // Convert to array and sort by last message time
+      const conversations = Object.values(conversationMap)
+        .sort((a, b) => new Date(b.lastMessageTime) - new Date(a.lastMessageTime));
+      
+      setConversations(conversations);
+
+      // Update selected conversation if it exists
+      if (selectedConversation) {
+        const updatedConv = conversations.find(c => c.userId === selectedConversation.userId);
+        if (updatedConv) {
+          setSelectedConversation(updatedConv);
+        }
+>>>>>>> 4b84aedac5ea083aff5a1d93e8affee87f716a17
       }
     }, error => console.error("Messages snapshot error:", error));
 
     return () => unsubscribe();
+<<<<<<< HEAD
   }, [selectedChatRoom?.id]);
 
   // Update admin's online status periodically
@@ -369,6 +478,9 @@ const Dashboard = () => {
 
     return () => clearInterval(interval);
   }, [isAdminOnline]);
+=======
+  }, [selectedConversation?.userId]);
+>>>>>>> 4b84aedac5ea083aff5a1d93e8affee87f716a17
 
   const computeAnalytics = (data, filter) => {
     const stats = {};
@@ -422,11 +534,19 @@ const Dashboard = () => {
     }
   };
 
+<<<<<<< HEAD
   // Filter chat rooms based on search
   const filteredChatRooms = chatRooms.filter(room => {
     const searchLower = messageSearch.toLowerCase();
     return room.userName.toLowerCase().includes(searchLower) ||
            room.lastMessage?.toLowerCase().includes(searchLower);
+=======
+  // Filter conversations based on search
+  const filteredConversations = conversations.filter(conv => {
+    const searchLower = messageSearch.toLowerCase();
+    return conv.userName.toLowerCase().includes(searchLower) ||
+           conv.lastMessage?.toLowerCase().includes(searchLower);
+>>>>>>> 4b84aedac5ea083aff5a1d93e8affee87f716a17
   });
 
   const filteredPatients = patients.filter(p => {
@@ -1315,7 +1435,11 @@ const Dashboard = () => {
                       />
                     </div>
                     <div style={{ marginTop: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+<<<<<<< HEAD
                       <label style={{ fontSize: '14px', color: '#666' }}>Status:</label>
+=======
+                      <label style={{ fontSize: '14px', color: '#666' }}>Admin Status:</label>
+>>>>>>> 4b84aedac5ea083aff5a1d93e8affee87f716a17
                       <button
                         onClick={() => setIsAdminOnline(!isAdminOnline)}
                         style={{
@@ -1334,11 +1458,16 @@ const Dashboard = () => {
                   </div>
 
                   <div style={{ flex: 1, overflowY: 'auto' }}>
+<<<<<<< HEAD
                     {filteredChatRooms.length === 0 ? (
+=======
+                    {filteredConversations.length === 0 ? (
+>>>>>>> 4b84aedac5ea083aff5a1d93e8affee87f716a17
                       <div style={{ padding: '20px', textAlign: 'center', color: '#666' }}>
                         No conversations found
                       </div>
                     ) : (
+<<<<<<< HEAD
                       filteredChatRooms.map(room => {
                         const userStatus = getUserStatus(room.userLastSeen);
                         return (
@@ -1416,10 +1545,57 @@ const Dashboard = () => {
                                   margin: '2px 0 0 0', 
                                   fontSize: '13px', 
                                   color: '#666',
+=======
+                      filteredConversations.map(conv => (
+                        <div
+                          key={conv.userId}
+                          onClick={() => setSelectedConversation(conv)}
+                          style={{
+                            padding: '12px 15px',
+                            borderBottom: '1px solid #eee',
+                            cursor: 'pointer',
+                            backgroundColor: selectedConversation?.userId === conv.userId ? '#e3f2fd' : 'white'
+                          }}
+                          onMouseEnter={(e) => {
+                            if (selectedConversation?.userId !== conv.userId) {
+                              e.target.style.backgroundColor = '#f5f5f5';
+                            }
+                          }}
+                          onMouseLeave={(e) => {
+                            if (selectedConversation?.userId !== conv.userId) {
+                              e.target.style.backgroundColor = 'white';
+                            }
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <div style={{
+                              width: '40px',
+                              height: '40px',
+                              borderRadius: '50%',
+                              backgroundColor: '#4caf50',
+                              color: 'white',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontSize: '16px',
+                              fontWeight: 'bold'
+                            }}>
+                              {conv.userName.charAt(0).toUpperCase()}
+                            </div>
+                            
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <h4 style={{ 
+                                  margin: 0, 
+                                  fontSize: '14px', 
+                                  fontWeight: '600',
+                                  color: '#333',
+>>>>>>> 4b84aedac5ea083aff5a1d93e8affee87f716a17
                                   overflow: 'hidden',
                                   textOverflow: 'ellipsis',
                                   whiteSpace: 'nowrap'
                                 }}>
+<<<<<<< HEAD
                                   {room.lastMessageSender === 'admin' ? 'You: ' : ''}
                                   {room.lastMessage || 'No messages'}
                                 </p>
@@ -1452,12 +1628,59 @@ const Dashboard = () => {
                           </div>
                         );
                       })
+=======
+                                  {conv.userName}
+                                </h4>
+                                <span style={{ 
+                                  fontSize: '12px', 
+                                  color: '#999',
+                                  flexShrink: 0
+                                }}>
+                                  {formatTime(conv.lastMessageTime)}
+                                </span>
+                              </div>
+                              <p style={{ 
+                                margin: '2px 0 0 0', 
+                                fontSize: '13px', 
+                                color: '#666',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap'
+                              }}>
+                                {conv.lastMessage || 'No messages'}
+                              </p>
+                            </div>
+                            
+                            {conv.unreadCount > 0 && (
+                              <div style={{
+                                backgroundColor: '#4caf50',
+                                color: 'white',
+                                borderRadius: '50%',
+                                width: '20px',
+                                height: '20px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                fontSize: '12px',
+                                fontWeight: 'bold'
+                              }}>
+                                {conv.unreadCount}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))
+>>>>>>> 4b84aedac5ea083aff5a1d93e8affee87f716a17
                     )}
                   </div>
                 </div>
 
                 <div className="chat-panel" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+<<<<<<< HEAD
                   {selectedChatRoom ? (
+=======
+                  {selectedConversation ? (
+>>>>>>> 4b84aedac5ea083aff5a1d93e8affee87f716a17
                     <>
                       <div style={{ 
                         padding: '15px 20px', 
@@ -1467,6 +1690,7 @@ const Dashboard = () => {
                         alignItems: 'center',
                         gap: '10px'
                       }}>
+<<<<<<< HEAD
                         <div style={{ position: 'relative' }}>
                           <div style={{
                             width: '35px',
@@ -1516,6 +1740,30 @@ const Dashboard = () => {
                             {isAdminOnline ? 'You: Online' : 'You: Offline'}
                           </div>
                         </div>
+=======
+                        <div style={{
+                          width: '35px',
+                          height: '35px',
+                          borderRadius: '50%',
+                          backgroundColor: '#4caf50',
+                          color: 'white',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: '14px',
+                          fontWeight: 'bold'
+                        }}>
+                          {selectedConversation.userName.charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                          <h3 style={{ margin: 0, fontSize: '16px', color: '#333' }}>
+                            {selectedConversation.userName}
+                          </h3>
+                          <p style={{ margin: 0, fontSize: '12px', color: '#666' }}>
+                            {isAdminOnline ? 'Dr. Jessica Fano' : 'AI Assistant Available'}
+                          </p>
+                        </div>
+>>>>>>> 4b84aedac5ea083aff5a1d93e8affee87f716a17
                       </div>
 
                       <div style={{ 
@@ -1527,35 +1775,64 @@ const Dashboard = () => {
                         flexDirection: 'column',
                         gap: '10px'
                       }}>
+<<<<<<< HEAD
                         {messages.map(msg => {
                           const isFromAdmin = msg.senderType === 'admin';
+=======
+                        {selectedConversation.messages.map(msg => {
+                          const isFromPatient = msg.senderId !== 'ai' && msg.senderId !== 'admin';
+                          const isFromAdmin = msg.senderId === 'admin';
+>>>>>>> 4b84aedac5ea083aff5a1d93e8affee87f716a17
                           
                           return (
                             <div
                               key={msg.id}
                               style={{
+<<<<<<< HEAD
                                 alignSelf: isFromAdmin ? 'flex-end' : 'flex-start',
                                 maxWidth: '70%'
                               }}
                             >
                               {!isFromAdmin && (
+=======
+                                alignSelf: isFromPatient ? 'flex-start' : 'flex-end',
+                                maxWidth: '70%'
+                              }}
+                            >
+                              {!isFromPatient && (
+>>>>>>> 4b84aedac5ea083aff5a1d93e8affee87f716a17
                                 <div style={{
                                   fontSize: '11px',
                                   color: '#666',
                                   marginBottom: '2px',
+<<<<<<< HEAD
                                   marginLeft: '10px'
                                 }}>
                                   {msg.senderName || 'Patient'}
+=======
+                                  textAlign: 'right'
+                                }}>
+                                  {isFromAdmin ? 'Dr. Jessica Fano' : 'AI Assistant'}
+>>>>>>> 4b84aedac5ea083aff5a1d93e8affee87f716a17
                                 </div>
                               )}
                               
                               <div style={{
+<<<<<<< HEAD
                                 background: isFromAdmin ? '#4caf50' : 'white',
                                 color: isFromAdmin ? '#fff' : '#000',
                                 padding: '10px 12px',
                                 borderRadius: isFromAdmin ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
                                 boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
                                 border: isFromAdmin ? 'none' : '1px solid #ddd'
+=======
+                                background: isFromPatient ? 'white' : (isFromAdmin ? '#4caf50' : '#2196f3'),
+                                color: isFromPatient ? '#000' : '#fff',
+                                padding: '10px 12px',
+                                borderRadius: isFromPatient ? '18px 18px 18px 4px' : '18px 18px 4px 18px',
+                                boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
+                                border: isFromPatient ? '1px solid #ddd' : 'none'
+>>>>>>> 4b84aedac5ea083aff5a1d93e8affee87f716a17
                               }}>
                                 <div style={{ fontSize: '14px', lineHeight: '1.4' }}>
                                   {msg.text}
@@ -1566,12 +1843,19 @@ const Dashboard = () => {
                                   opacity: 0.7,
                                   textAlign: 'right'
                                 }}>
+<<<<<<< HEAD
                                   {formatMessageTime(msg.timestamp)}
                                   {isFromAdmin && (
                                     <span style={{ marginLeft: '5px' }}>
                                       {msg.isRead ? '✓✓' : '✓'}
                                     </span>
                                   )}
+=======
+                                  {msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString([], {
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                  }) : '-'}
+>>>>>>> 4b84aedac5ea083aff5a1d93e8affee87f716a17
                                 </div>
                               </div>
                             </div>
@@ -1587,19 +1871,30 @@ const Dashboard = () => {
                         <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
                           <input
                             type="text"
+<<<<<<< HEAD
                             placeholder={isAdminOnline ? "Type a message..." : "You are offline - go online to send messages"}
                             value={newMessage}
                             onChange={(e) => setNewMessage(e.target.value)}
                             onKeyPress={handleKeyPress}
                             disabled={!isAdminOnline}
+=======
+                            placeholder="Type a message..."
+                            value={newMessage}
+                            onChange={(e) => setNewMessage(e.target.value)}
+                            onKeyPress={handleKeyPress}
+>>>>>>> 4b84aedac5ea083aff5a1d93e8affee87f716a17
                             style={{
                               flex: 1,
                               padding: '10px 15px',
                               border: '1px solid #ddd',
                               borderRadius: '20px',
                               fontSize: '14px',
+<<<<<<< HEAD
                               outline: 'none',
                               backgroundColor: isAdminOnline ? 'white' : '#f5f5f5'
+=======
+                              outline: 'none'
+>>>>>>> 4b84aedac5ea083aff5a1d93e8affee87f716a17
                             }}
                           />
                           <button 
@@ -1607,16 +1902,27 @@ const Dashboard = () => {
                               e.preventDefault();
                               sendMessage();
                             }}
+<<<<<<< HEAD
                             disabled={!newMessage.trim() || !isAdminOnline}
                             type="button"
                             style={{
                               backgroundColor: (newMessage.trim() && isAdminOnline) ? '#4caf50' : '#ccc',
+=======
+                            disabled={!newMessage.trim()}
+                            type="button"
+                            style={{
+                              backgroundColor: newMessage.trim() ? '#4caf50' : '#ccc',
+>>>>>>> 4b84aedac5ea083aff5a1d93e8affee87f716a17
                               color: 'white',
                               border: 'none',
                               borderRadius: '50%',
                               width: '40px',
                               height: '40px',
+<<<<<<< HEAD
                               cursor: (newMessage.trim() && isAdminOnline) ? 'pointer' : 'not-allowed',
+=======
+                              cursor: newMessage.trim() ? 'pointer' : 'not-allowed',
+>>>>>>> 4b84aedac5ea083aff5a1d93e8affee87f716a17
                               display: 'flex',
                               alignItems: 'center',
                               justifyContent: 'center',
@@ -1641,7 +1947,11 @@ const Dashboard = () => {
                       <div style={{ fontSize: '48px', marginBottom: '20px' }}>💬</div>
                       <h3 style={{ margin: '0 0 10px 0' }}>Select a conversation</h3>
                       <p style={{ margin: 0, textAlign: 'center' }}>
+<<<<<<< HEAD
                         Choose from your existing conversations to start messaging with patients
+=======
+                        Choose from your existing conversations or start a new one
+>>>>>>> 4b84aedac5ea083aff5a1d93e8affee87f716a17
                       </p>
                     </div>
                   )}
