@@ -377,10 +377,54 @@
 }
 
 /* Appointment */
-.appointment-controls {
+
+.controls-wrapper {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;        /* vertical centering — fixes your problem */
+  justify-content: space-between; /* left input, right filters/buttons */
+  gap: 16px;
+  width: 100%;
   margin-bottom: 20px;
+}
+
+/* make the left and right groups behave consistently */
+.left-controls,
+.right-controls {
+  display: flex;
+  align-items: center; /* important */
+  gap: 10px;
+}
+
+.export-btn {
+  padding: 6px 12px;
+  background-color: #094685;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.export-btn:hover {
+  background-color: #094685;
+}
+
+
+/* normalize elements so heights and vertical centering are consistent */
+.search-input,
+.filter-select,
+.calendar-btn {
+  height: 40px;
+  padding: 8px 12px;
+  margin: 0;
+  box-sizing: border-box;
+  vertical-align: middle;
+  line-height: 1; /* avoid odd baseline differences */
+}
+
+/* small responsive tweak */
+@media (max-width: 700px) {
+  .controls-wrapper { flex-wrap: wrap; }
+  .right-controls { margin-left: auto; }
 }
 
 .filter-calendar {
@@ -490,6 +534,16 @@
   border: none;
   border-radius: 4px;
   cursor: pointer;
+}
+
+/*higlight*/
+.highlight-row {
+  animation: highlight 2s ease-in-out;
+}
+
+@keyframes highlight {
+  0% { background-color: #ffff99; }
+  100% { background-color: transparent; }
 }
 
 

@@ -34,6 +34,19 @@ import {
 import ReactCalendar from 'react-calendar';
 import 'react-calendar/dist/Calendar.css';
 
+//appointment export file
+import jsPDF from "jspdf";
+
+
+//service image upload
+import {
+  ref,
+  uploadBytes,
+  getDownloadURL,
+  deleteObject
+} from 'firebase/storage';
+import { storage } from "../firebase"; 
+
 // Sidebar Icons
 import dashboardIcon from '../assets/dashboard.png';
 import appointmentIcon from '../assets/appointment.png';
@@ -47,6 +60,7 @@ import denteaseIcon from '../assets/dentease.png';
 import servicesIcon from '../assets/services.png';
 
 const Dashboard = () => {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [appointments, setAppointments] = useState([]);
   const [patients, setPatients] = useState([]);
@@ -81,9 +95,50 @@ const Dashboard = () => {
   const [patientSearch, setPatientSearch] = useState("");
   const [patientFilter, setPatientFilter] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
+  
+  // Appointment tab states
+  const [appointmentSearch, setAppointmentSearch] = useState(''); // distinct name
   const [appointmentCurrentPage, setAppointmentCurrentPage] = useState(1);
 
   const rowsPerPage = 5;
+
+  //PDF export
+ const exportAppointmentsToPDF = async (appointmentsToExport) => {
+  if (!appointmentsToExport || appointmentsToExport.length === 0) {
+    alert("No appointments to export");
+    return;
+  }
+
+  // Dynamically import autoTable
+  const { default: autoTable } = await import("jspdf-autotable");
+  const doc = new jsPDF();
+
+  const tableColumn = ["Patient Name", "Doctor", "Service", "Date", "Time", "Status"];
+  const tableRows = [];
+
+  appointmentsToExport.forEach(appt => {
+    const apptData = [
+      appt.userName,
+      appt.doctor || "-",
+      getServicesString(appt),
+      formatDate(appt.appointmentDate || appt.date),
+      appt.time || "-",
+      appt.status ? appt.status.charAt(0).toUpperCase() + appt.status.slice(1) : "-"
+    ];
+    tableRows.push(apptData);
+  });
+
+  autoTable(doc, {
+    head: [tableColumn],
+    body: tableRows,
+    startY: 20,
+    theme: "grid",
+  });
+
+  doc.text("Appointments List", 14, 15);
+  doc.save("appointments.pdf");
+};
+
 
   // Services tab states
   const [services, setServices] = useState([]);
@@ -92,9 +147,189 @@ const Dashboard = () => {
   const [editDescription, setEditDescription] = useState('');
   const [editPrice, setEditPrice] = useState('');
 
-  const navigate = useNavigate();
+  // ADD THESE NEW STATES FOR IMAGE UPLOAD:
+  const [selectedImage, setSelectedImage] = useState(null);
+  const [imagePreview, setImagePreview] = useState('');
+  const [uploadingImage, setUploadingImage] = useState(false);
+
+  // Add missing refs
   const messagesEndRef = useRef(null);
   const messageInputRef = useRef(null);
+
+  // Handle image file selection
+  const handleImageSelect = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      // Validate file type
+      if (!file.type.startsWith('image/')) {
+        alert('Please select a valid image file');
+        return;
+      }
+      
+      // Validate file size (5MB limit)
+      if (file.size > 5 * 1024 * 1024) {
+        alert('Image size should be less than 5MB');
+        return;
+      }
+      
+      setSelectedImage(file);
+      
+      // Create preview URL
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setImagePreview(e.target.result);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  // Upload image to Firebase Storage
+  // Replace your uploadServiceImage function with this debug version
+const uploadServiceImage = async (imageFile) => {
+  try {
+    // Step 1: Validate file
+    console.log('🔍 Step 1: Validating file...');
+    if (!imageFile) {
+      throw new Error('No image file provided');
+    }
+    console.log('✅ File provided:', imageFile.name, 'Size:', imageFile.size, 'Type:', imageFile.type);
+
+    // Check file size (5MB limit)
+    if (imageFile.size > 5 * 1024 * 1024) {
+      throw new Error('Image size must be less than 5MB');
+    }
+    console.log('✅ File size OK');
+
+    // Check file type
+    if (!imageFile.type.startsWith('image/')) {
+      throw new Error('File must be an image');
+    }
+    console.log('✅ File type OK');
+
+    // Step 2: Check Firebase Storage instance
+    console.log('🔍 Step 2: Checking Firebase Storage...');
+    console.log('Storage instance:', storage);
+    if (!storage) {
+      throw new Error('Firebase Storage not initialized');
+    }
+    console.log('✅ Firebase Storage initialized');
+
+    // Step 3: Create reference
+    console.log('🔍 Step 3: Creating storage reference...');
+    const timestamp = Date.now();
+    const cleanFileName = imageFile.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+    const fileName = `service_${timestamp}_${cleanFileName}`;
+    const storagePath = `localImage/${fileName}`;
+    
+    console.log('📁 Storage path:', storagePath);
+    
+    const imageRef = ref(storage, storagePath);
+    console.log('✅ Storage reference created:', imageRef);
+
+    // Step 4: Attempt upload
+    console.log('🔍 Step 4: Starting upload...');
+    console.log('📤 Uploading to Firebase Storage...');
+    
+    // Add metadata for debugging
+    const metadata = {
+      contentType: imageFile.type,
+      customMetadata: {
+        uploadedBy: 'admin',
+        uploadedAt: new Date().toISOString(),
+        originalName: imageFile.name
+      }
+    };
+    
+    const snapshot = await uploadBytes(imageRef, imageFile, metadata);
+    console.log('✅ Upload completed successfully!');
+    console.log('📋 Upload snapshot:', snapshot);
+    
+    // Step 5: Get download URL
+    console.log('🔍 Step 5: Getting download URL...');
+    const downloadURL = await getDownloadURL(snapshot.ref);
+    console.log('✅ Download URL obtained:', downloadURL);
+    
+    return downloadURL;
+    
+  } catch (error) {
+    console.error('❌ Upload failed at step:', error.message);
+    console.error('🔧 Full error details:', error);
+    console.error('📊 Error code:', error.code);
+    console.error('📊 Error name:', error.name);
+    
+    // Firebase Storage specific error handling
+    if (error.code) {
+      switch (error.code) {
+        case 'storage/unauthorized':
+          console.error('🚫 PERMISSION ERROR: Check Firebase Storage Rules');
+          throw new Error('Upload failed: You do not have permission to upload files. Please check Firebase Storage security rules.');
+        case 'storage/canceled':
+          console.error('❌ CANCELLED: Upload was cancelled');
+          throw new Error('Upload was cancelled');
+        case 'storage/unknown':
+          console.error('❓ UNKNOWN ERROR: Network or server issue');
+          throw new Error('Upload failed due to unknown error. Check your internet connection and try again.');
+        case 'storage/invalid-format':
+          console.error('📁 FORMAT ERROR: Invalid file format');
+          throw new Error('Invalid file format');
+        case 'storage/object-not-found':
+          console.error('🔍 NOT FOUND: File path issue');
+          throw new Error('Storage path not found');
+        case 'storage/bucket-not-found':
+          console.error('🪣 BUCKET ERROR: Storage bucket not found');
+          throw new Error('Firebase Storage bucket not found. Check your Firebase configuration.');
+        case 'storage/project-not-found':
+          console.error('📋 PROJECT ERROR: Firebase project not found');
+          throw new Error('Firebase project not found. Check your Firebase configuration.');
+        case 'storage/quota-exceeded':
+          console.error('💾 QUOTA ERROR: Storage quota exceeded');
+          throw new Error('Storage quota exceeded. Contact administrator.');
+        case 'storage/unauthenticated':
+          console.error('🔐 AUTH ERROR: User not authenticated');
+          throw new Error('User not authenticated. Please log in and try again.');
+        case 'storage/retry-limit-exceeded':
+          console.error('🔄 RETRY ERROR: Too many attempts');
+          throw new Error('Upload failed after multiple attempts. Try again later.');
+        default:
+          console.error('❓ UNHANDLED ERROR CODE:', error.code);
+          throw new Error(`Upload failed: ${error.message} (Code: ${error.code})`);
+      }
+    } else {
+      // Generic errors
+      throw new Error(`Upload failed: ${error.message}`);
+    }
+  }
+};
+
+  // Delete image from Firebase Storage
+  const deleteServiceImage = async (imageUrl) => {
+    if (!imageUrl) return;
+    
+    try {
+      // Extract the path from the URL
+      const urlParts = imageUrl.split('/');
+      const fileName = urlParts[urlParts.length - 1].split('?')[0];
+      const imagePath = `localImage/${decodeURIComponent(fileName)}`;
+      
+      const imageRef = ref(storage, imagePath);
+      await deleteObject(imageRef);
+    } catch (error) {
+      console.error('Error deleting image:', error);
+      // Don't throw error as service deletion should continue even if image deletion fails
+    }
+  };
+
+  // Load services when component mounts - Fix function name
+  const loadServices = () => {
+    // This function can be used to manually load services if needed
+    console.log('Loading services...');
+  };
+
+  useEffect(() => {
+    if (activeTab === 'services') {
+      loadServices();
+    }
+  }, [activeTab]);
 
   // Auto-scroll to bottom of messages
   const scrollToBottom = () => {
@@ -136,7 +371,6 @@ const Dashboard = () => {
     return s;
   };
 
-  // *** FIXED: Created the formatTime function that was missing ***
   const formatTime = (timestamp) => {
     if (!timestamp) return 'never';
     const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
@@ -152,7 +386,6 @@ const Dashboard = () => {
     if (diffDays < 7) return `${diffDays}d ago`;
     return date.toLocaleDateString();
   };
-
 
   const formatMessageTime = (timestamp) => {
     if (!timestamp) return '';
@@ -337,7 +570,8 @@ const Dashboard = () => {
         id: doc.id,
         name: doc.data().name || '',
         description: doc.data().description || '',
-        price: doc.data().price || 0
+        price: doc.data().price || 0,
+        imageUrl: doc.data().imageUrl || ''
       }));
 
       // Sort services by name for consistent display
@@ -349,12 +583,13 @@ const Dashboard = () => {
   }, []);
 
   // Function to add a new service to Firebase
-  const addService = async (name, description, price) => {
+  const addService = async (name, description, price, imageUrl = '') => {
     try {
       await addDoc(collection(db, "services"), {
         name: name.trim(),
         description: description.trim(),
-        price: parseFloat(price) || 0
+        price: parseFloat(price) || 0,
+        imageUrl: imageUrl
       });
     } catch (error) {
       console.error("Error adding service:", error);
@@ -362,13 +597,14 @@ const Dashboard = () => {
   };
 
   // Function to update a service in Firebase
-  const updateService = async (serviceId, name, description, price) => {
+  const updateService = async (serviceId, name, description, price, imageUrl = '') => {
     try {
       const serviceRef = doc(db, "services", serviceId);
       await updateDoc(serviceRef, {
         name: name.trim(),
         description: description.trim(),
-        price: parseFloat(price) || 0
+        price: parseFloat(price) || 0,
+        imageUrl: imageUrl
       });
     } catch (error) {
       console.error("Error updating service:", error);
@@ -378,6 +614,15 @@ const Dashboard = () => {
   // Function to delete a service from Firebase
   const deleteService = async (serviceId) => {
     try {
+      // Find the service to get its image URL
+      const serviceToDelete = services.find(s => s.id === serviceId);
+      
+      // Delete the image from storage if it exists
+      if (serviceToDelete?.imageUrl) {
+        await deleteServiceImage(serviceToDelete.imageUrl);
+      }
+      
+      // Delete the service from Firestore
       await deleteDoc(doc(db, "services", serviceId));
     } catch (error) {
       console.error("Error deleting service:", error);
@@ -626,7 +871,7 @@ const Dashboard = () => {
   const renderContent = () => {
     const today = new Date();
     const todayStr = today.toDateString();
-
+    
     try {
       switch (activeTab) {
         case 'dashboard': {
@@ -988,21 +1233,26 @@ const Dashboard = () => {
         }
 
         case 'appointment': {
-          // filter and paginate appointments
-          const filteredAppointments = appointments.filter(appt => {
-            if (appointmentFilter === 'all') return true;
-            return appt.status === appointmentFilter;
-          });
+          const filteredAppointments = appointments
+  .filter(appt => appointmentFilter === 'all' || appt.status === appointmentFilter)
+  .filter(appt => {
+    const searchText = appointmentSearch.toLowerCase();
+    const patientName = appt.userName.toLowerCase();
+    const services = getServicesString(appt).toLowerCase();
+    return patientName.includes(searchText) || services.includes(searchText);
+  });
 
-          const appointmentTotalPages = Math.max(
-            1,
-            Math.ceil(filteredAppointments.length / rowsPerPage)
-          );
 
-          const paginatedAppointments = filteredAppointments.slice(
-            (appointmentCurrentPage - 1) * rowsPerPage,
-            appointmentCurrentPage * rowsPerPage
-          );
+const appointmentTotalPages = Math.max(
+  1,
+  Math.ceil(filteredAppointments.length / rowsPerPage)
+);
+
+const paginatedAppointments = filteredAppointments.slice(
+  (appointmentCurrentPage - 1) * rowsPerPage,
+  appointmentCurrentPage * rowsPerPage
+);
+
 
           // helper to style days with approved appts
           const tileContent = ({ date, view }) => {
@@ -1018,8 +1268,25 @@ const Dashboard = () => {
 
           return (
             <div className="dashboard-content">
-              <div className="appointment-controls">
-                <div className="filter-calendar">
+    <div className="controls-wrapper">
+  <div className="left-controls">
+   <input
+  type="text"
+  placeholder="Search patients..."
+  value={appointmentSearch}
+  onChange={(e) => setAppointmentSearch(e.target.value)}
+  className="search-input"
+/>
+<button
+  className="export-btn"
+  onClick={async () => await exportAppointmentsToPDF(filteredAppointments)}
+>
+  Export PDF
+</button>
+
+  </div>
+
+  <div className="right-controls">
                   <select
                     className="filter-select"
                     value={appointmentFilter}
@@ -1255,276 +1522,407 @@ const Dashboard = () => {
           );
         }
 
-        case 'services': {
-          return (
-            <div className="dashboard-content">
-              {/* Title and button on one line */}
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  marginBottom: '15px',
-                }}
-              >
-                <h3 style={{ margin: 0 }}>Services</h3>
+case 'services': {
+  return (
+    <div className="dashboard-content">
+      {/* Title and button on one line */}
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: '15px',
+        }}
+      >
+        <h3 style={{ margin: 0 }}>Services</h3>
 
-                <button
-                  onClick={() => {
-                    // open modal with empty fields
-                    setEditingService({ id: null, name: '', description: '', price: 0 });
-                    setEditDescription('');
-                    setEditPrice('');
-                    setNewServiceName('');
-                  }}
+        <button
+          onClick={() => {
+            // open modal with empty fields
+            setEditingService({ id: null, name: '', description: '', price: 0, imageUrl: '' });
+            setEditDescription('');
+            setEditPrice('');
+            setNewServiceName('');
+            setSelectedImage(null);
+            setImagePreview('');
+          }}
+          style={{
+            padding: '8px 16px',
+            backgroundColor: '#094685',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+          }}
+        >
+          + Add Service
+        </button>
+      </div>
+
+      {/* Services grid - keep your existing grid code here */}
+      <div
+        className="services-grid"
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+          gap: '20px',
+          marginTop: '20px',
+        }}
+      >
+        {services.map(service => (
+          <div
+            key={service.id}
+            className="service-card"
+            style={{
+              border: '1px solid #ddd',
+              borderRadius: '8px',
+              padding: '15px',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between',
+              minHeight: '250px',
+            }}
+          >
+            {/* Your existing service card content */}
+            {/* Service Image */}
+            <div style={{ marginBottom: '10px' }}>
+              {service.imageUrl ? (
+                <img
+                  src={service.imageUrl}
+                  alt={service.name}
                   style={{
-                    padding: '8px 16px',
-                    backgroundColor: '#094685',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
+                    width: '100%',
+                    height: '120px',
+                    objectFit: 'cover',
+                    borderRadius: '6px',
+                    backgroundColor: '#f5f5f5',
                   }}
-                >
-                  + Add Service
-                </button>
-              </div>
-
-              <div
-                className="services-grid"
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))',
-                  gap: '20px',
-                  marginTop: '20px',
-                }}
-              >
-                {services.map(service => (
-                  <div
-                    key={service.id}
-                    className="service-card"
-                    style={{
-                      border: '1px solid #ddd',
-                      borderRadius: '8px',
-                      padding: '15px',
-                      boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      justifyContent: 'space-between',
-                      minHeight: '180px',
-                    }}
-                  >
-                    <div>
-                      <h4 style={{ margin: '0 0 10px 0', color: '#333' }}>{service.name}</h4>
-                      <p style={{ flexGrow: 1, marginBottom: '10px', color: '#666', lineHeight: '1.4' }}>
-                        {service.description}
-                      </p>
-                      <p style={{ fontWeight: 'bold', marginBottom: '15px', fontSize: '18px', color: '#4caf50' }}>
-                        ₱{service.price.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
-                      </p>
-                    </div>
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                      <button
-                        onClick={() => {
-                          setEditingService(service);
-                          setEditDescription(service.description);
-                          setEditPrice(service.price.toString());
-                          setNewServiceName(service.name);
-                        }}
-                        style={{
-                          flex: 1,
-                          padding: '6px 12px',
-                          backgroundColor: '#094685',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '4px',
-                          cursor: 'pointer',
-                        }}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => {
-                          if (window.confirm(`Are you sure you want to delete "${service.name}"?`)) {
-                            deleteService(service.id);
-                          }
-                        }}
-                        style={{
-                          padding: '6px 12px',
-                          backgroundColor: '#f44336',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '4px',
-                          cursor: 'pointer',
-                        }}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {services.length === 0 && (
-                <div style={{
-                  textAlign: 'center',
-                  padding: '50px 20px',
-                  color: '#666',
-                  backgroundColor: '#f8f9fa',
-                  borderRadius: '8px',
-                  marginTop: '20px'
-                }}>
-                  <h3>No Services Found</h3>
-                  <p>Start by adding your first dental service using the "Add Service" button above.</p>
-                </div>
-              )}
-
-              {/* Pop-up modal */}
-              {editingService && (
+                />
+              ) : (
                 <div
                   style={{
-                    position: 'fixed',
-                    top: 0,
-                    left: 0,
                     width: '100%',
-                    height: '100%',
-                    backgroundColor: 'rgba(0,0,0,0.4)',
+                    height: '120px',
+                    backgroundColor: '#f5f5f5',
+                    borderRadius: '6px',
                     display: 'flex',
-                    justifyContent: 'center',
                     alignItems: 'center',
-                    zIndex: 9999,
+                    justifyContent: 'center',
+                    color: '#999',
+                    fontSize: '14px',
                   }}
-                  onClick={() => setEditingService(null)}
                 >
-                  <div
-                    style={{
-                      background: 'white',
-                      padding: '25px',
-                      borderRadius: '8px',
-                      minWidth: '400px',
-                      maxWidth: '90vw',
-                    }}
-                    onClick={e => e.stopPropagation()}
-                  >
-                    <h3 style={{ margin: '0 0 20px 0', color: '#333' }}>
-                      {editingService.id ? 'Edit Service' : 'Add New Service'}
-                    </h3>
-
-                    <div style={{ marginBottom: '15px' }}>
-                      <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Name</label>
-                      <input
-                        type="text"
-                        value={newServiceName}
-                        onChange={e => setNewServiceName(e.target.value)}
-                        placeholder="Enter service name"
-                        style={{
-                          width: '100%',
-                          padding: '8px 12px',
-                          border: '1px solid #ddd',
-                          borderRadius: '4px',
-                          fontSize: '14px'
-                        }}
-                      />
-                    </div>
-
-                    <div style={{ marginBottom: '15px' }}>
-                      <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Description</label>
-                      <textarea
-                        value={editDescription}
-                        onChange={e => setEditDescription(e.target.value)}
-                        rows={4}
-                        placeholder="Describe the service"
-                        style={{
-                          width: '100%',
-                          padding: '8px 12px',
-                          border: '1px solid #ddd',
-                          borderRadius: '4px',
-                          fontSize: '14px',
-                          resize: 'vertical'
-                        }}
-                      />
-                    </div>
-
-                    <div style={{ marginBottom: '20px' }}>
-                      <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Price (₱)</label>
-                      <input
-                        type="number"
-                        value={editPrice}
-                        onChange={e => setEditPrice(e.target.value)}
-                        min="0"
-                        step="0.01"
-                        placeholder="0.00"
-                        style={{
-                          width: '100%',
-                          padding: '8px 12px',
-                          border: '1px solid #ddd',
-                          borderRadius: '4px',
-                          fontSize: '14px'
-                        }}
-                      />
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-                      <button
-                        onClick={() => setEditingService(null)}
-                        style={{
-                          padding: '8px 16px',
-                          backgroundColor: '#9e9e9e',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '4px',
-                          cursor: 'pointer',
-                        }}
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        onClick={async () => {
-                          if (!newServiceName.trim()) {
-                            alert('Please enter a service name');
-                            return;
-                          }
-                          if (!editDescription.trim()) {
-                            alert('Please enter a description');
-                            return;
-                          }
-                          if (!editPrice || parseFloat(editPrice) < 0) {
-                            alert('Please enter a valid price');
-                            return;
-                          }
-
-                          try {
-                            if (editingService.id) {
-                              // Update existing service
-                              await updateService(editingService.id, newServiceName, editDescription, editPrice);
-                            } else {
-                              // Add new service
-                              await addService(newServiceName, editDescription, editPrice);
-                            }
-                            setEditingService(null);
-                          } catch (error) {
-                            alert('Error saving service. Please try again.');
-                            console.error('Service save error:', error);
-                          }
-                        }}
-                        style={{
-                          padding: '8px 16px',
-                          backgroundColor: '#4caf50',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '4px',
-                          cursor: 'pointer',
-                        }}
-                      >
-                        {editingService.id ? 'Update' : 'Add'} Service
-                      </button>
-                    </div>
-                  </div>
+                  No Image
                 </div>
               )}
             </div>
-          );
-        }
+
+            <div>
+              <h4 style={{ margin: '0 0 10px 0', color: '#333' }}>{service.name}</h4>
+              <p style={{ flexGrow: 1, marginBottom: '10px', color: '#666', lineHeight: '1.4' }}>
+                {service.description}
+              </p>
+              <p style={{ fontWeight: 'bold', marginBottom: '15px', fontSize: '18px', color: '#4caf50' }}>
+                ₱{service.price.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                onClick={() => {
+                  setEditingService(service);
+                  setEditDescription(service.description);
+                  setEditPrice(service.price.toString());
+                  setNewServiceName(service.name);
+                  setSelectedImage(null);
+                  setImagePreview(service.imageUrl || '');
+                }}
+                style={{
+                  flex: 1,
+                  padding: '6px 12px',
+                  backgroundColor: '#094685',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                }}
+              >
+                Edit
+              </button>
+              <button
+                onClick={() => {
+                  if (window.confirm(`Are you sure you want to delete "${service.name}"?`)) {
+                    deleteService(service.id);
+                  }
+                }}
+                style={{
+                  padding: '6px 12px',
+                  backgroundColor: '#f44336',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                }}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {services.length === 0 && (
+        <div style={{
+          textAlign: 'center',
+          padding: '50px 20px',
+          color: '#666',
+          backgroundColor: '#f8f9fa',
+          borderRadius: '8px',
+          marginTop: '20px'
+        }}>
+          <h3>No Services Found</h3>
+          <p>Start by adding your first dental service using the "Add Service" button above.</p>
+        </div>
+      )}
+
+      {/* Pop-up modal */}
+      {editingService && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            backgroundColor: 'rgba(0,0,0,0.4)',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            zIndex: 9999,
+          }}
+          onClick={() => setEditingService(null)}
+        >
+          <div
+            style={{
+              background: 'white',
+              padding: '25px',
+              borderRadius: '8px',
+              minWidth: '400px',
+              maxWidth: '90vw',
+              maxHeight: '90vh',
+              overflowY: 'auto',
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <h3 style={{ margin: '0 0 20px 0', color: '#333' }}>
+              {editingService.id ? 'Edit Service' : 'Add New Service'}
+            </h3>
+
+            {/* Image Upload Section */}
+            <div style={{ marginBottom: '15px' }}>
+              <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Service Image</label>
+              
+              {/* Image Preview */}
+              {imagePreview && (
+                <div style={{ marginBottom: '10px' }}>
+                  <img
+                    src={imagePreview}
+                    alt="Preview"
+                    style={{
+                      width: '100%',
+                      maxWidth: '200px',
+                      height: '120px',
+                      objectFit: 'cover',
+                      borderRadius: '6px',
+                      border: '1px solid #ddd',
+                    }}
+                  />
+                </div>
+              )}
+              
+              {/* File Input */}
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleImageSelect}
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px',
+                  fontSize: '14px',
+                  backgroundColor: 'white',
+                }}
+              />
+              <small style={{ color: '#666', fontSize: '12px', marginTop: '5px', display: 'block' }}>
+                Supported formats: JPG, PNG, GIF (Max: 5MB)
+              </small>
+            </div>
+
+            <div style={{ marginBottom: '15px' }}>
+              <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Name</label>
+              <input
+                type="text"
+                value={newServiceName}
+                onChange={e => setNewServiceName(e.target.value)}
+                placeholder="Enter service name"
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px',
+                  fontSize: '14px'
+                }}
+              />
+            </div>
+
+            <div style={{ marginBottom: '15px' }}>
+              <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Description</label>
+              <textarea
+                value={editDescription}
+                onChange={e => setEditDescription(e.target.value)}
+                rows={4}
+                placeholder="Describe the service"
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px',
+                  fontSize: '14px',
+                  resize: 'vertical'
+                }}
+              />
+            </div>
+
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Price (₱)</label>
+              <input
+                type="number"
+                value={editPrice}
+                onChange={e => setEditPrice(e.target.value)}
+                min="0"
+                step="0.01"
+                placeholder="0.00"
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px',
+                  fontSize: '14px'
+                }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button
+                onClick={() => setEditingService(null)}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#9e9e9e',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              
+              {/* THIS IS THE BUTTON WHERE YOU REPLACE THE onClick HANDLER */}
+              <button
+                onClick={async () => {
+                  if (!newServiceName.trim()) {
+                    alert('Please enter a service name');
+                    return;
+                  }
+                  if (!editDescription.trim()) {
+                    alert('Please enter a description');
+                    return;
+                  }
+                  if (!editPrice || parseFloat(editPrice) < 0) {
+                    alert('Please enter a valid price');
+                    return;
+                  }
+
+                  setUploadingImage(true);
+                  
+                  try {
+                    let imageUrl = '';
+                    
+                    // If editing an existing service and no new image is selected, keep the old image
+                    if (editingService.id && !selectedImage) {
+                      imageUrl = editingService.imageUrl || '';
+                    }
+                    
+                    // Upload new image if selected
+                    if (selectedImage) {
+                      console.log('Starting image upload...', selectedImage.name);
+                      try {
+                        imageUrl = await uploadServiceImage(selectedImage);
+                        console.log('Image uploaded successfully:', imageUrl);
+                      } catch (uploadError) {
+                        console.error('Image upload failed:', uploadError);
+                        alert(`Image upload failed: ${uploadError.message}`);
+                        return;
+                      }
+                    }
+
+                    // Save service to database
+                    try {
+                      if (editingService.id) {
+                        // Update existing service
+                        console.log('Updating existing service...');
+                        await updateService(editingService.id, newServiceName, editDescription, editPrice, imageUrl);
+                        console.log('Service updated successfully');
+                      } else {
+                        // Add new service
+                        console.log('Adding new service...');
+                        await addService(newServiceName, editDescription, editPrice, imageUrl);
+                        console.log('Service added successfully');
+                      }
+                      
+                      // Reset form and close modal
+                      setEditingService(null);
+                      setSelectedImage(null);
+                      setImagePreview('');
+                      setNewServiceName('');
+                      setEditDescription('');
+                      setEditPrice('');
+                      
+                    } catch (dbError) {
+                      console.error('Database operation failed:', dbError);
+                      alert(`Failed to save service: ${dbError.message}`);
+                    }
+                    
+                  } catch (error) {
+                    console.error('General error saving service:', error);
+                    alert(`Error saving service: ${error.message}`);
+                  } finally {
+                    setUploadingImage(false);
+                  }
+                }}
+                disabled={uploadingImage}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: uploadingImage ? '#ccc' : '#4caf50',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: uploadingImage ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {uploadingImage 
+                  ? 'Uploading...' 
+                  : `${editingService.id ? 'Update' : 'Add'} Service`
+                }
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
         case 'message': {
           return (
