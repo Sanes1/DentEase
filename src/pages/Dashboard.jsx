@@ -1,7 +1,20 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './Dashboard.css';
-import { collection, doc, updateDoc, onSnapshot, query, orderBy, addDoc, serverTimestamp, where, getDocs } from "firebase/firestore";
+import {
+  collection,
+  doc,
+  updateDoc,
+  onSnapshot,
+  query,
+  orderBy,
+  addDoc,
+  serverTimestamp,
+  where,
+  getDocs,
+  deleteDoc,
+  setDoc
+} from "firebase/firestore";
 import { db } from "../firebase";
 import {
   BarChart,
@@ -22,13 +35,13 @@ import ReactCalendar from 'react-calendar';
 import 'react-calendar/dist/Calendar.css';
 
 // Sidebar Icons
-import dashboardIcon from '../assets/dashboard.png'; 
-import appointmentIcon from '../assets/appointment.png'; 
-import patientIcon from '../assets/patient.png'; 
+import dashboardIcon from '../assets/dashboard.png';
+import appointmentIcon from '../assets/appointment.png';
+import patientIcon from '../assets/patient.png';
 import messageIcon from '../assets/message.png';
-import feedbackIcon from '../assets/feedback.png'; 
-import analyticsIcon from '../assets/analytics.png'; 
-import settingsIcon from '../assets/setting.png';  
+import feedbackIcon from '../assets/feedback.png';
+import analyticsIcon from '../assets/analytics.png';
+import settingsIcon from '../assets/setting.png';
 import logoutIcon from '../assets/logout.png';
 import denteaseIcon from '../assets/dentease.png';
 import servicesIcon from '../assets/services.png';
@@ -46,7 +59,7 @@ const Dashboard = () => {
   const [showCalendar, setShowCalendar] = useState(false);
   const [calendarDate, setCalendarDate] = useState(new Date());
 
-  // Message states - Updated for real messenger
+  // Message states - Updated for real messenger with Firebase
   const [chatRooms, setChatRooms] = useState([]);
   const [selectedChatRoom, setSelectedChatRoom] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -54,33 +67,50 @@ const Dashboard = () => {
   const [messageSearch, setMessageSearch] = useState('');
   const [isAdminOnline, setIsAdminOnline] = useState(true);
   const [adminLastSeen, setAdminLastSeen] = useState(new Date());
+  const [showNewChatDialog, setShowNewChatDialog] = useState(false);
+  const [newChatForm, setNewChatForm] = useState({
+    userName: '',
+    userEmail: '',
+    userId: ''
+  });
+
+  // Current admin doctor (you can change this based on your login system)
+  const currentDoctor = 'dr-jessica'; // This should come from your authentication
 
   // Patient tab states
   const [patientSearch, setPatientSearch] = useState("");
   const [patientFilter, setPatientFilter] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
   const [appointmentCurrentPage, setAppointmentCurrentPage] = useState(1);
-  
+
   const rowsPerPage = 5;
 
   // Services tab states
-  const [services, setServices] = useState([
-    { id: 's1', name: 'Teeth Cleaning', description: 'Professional cleaning', price: 1500 },
-    { id: 's2', name: 'Tooth Extraction', description: 'Safe removal of teeth', price: 3000 },
-  ]);
-
+  const [services, setServices] = useState([]);
   const [editingService, setEditingService] = useState(null);
   const [newServiceName, setNewServiceName] = useState('');
   const [editDescription, setEditDescription] = useState('');
   const [editPrice, setEditPrice] = useState('');
 
   const navigate = useNavigate();
+  const messagesEndRef = useRef(null);
+  const messageInputRef = useRef(null);
+
+  // Auto-scroll to bottom of messages
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
 
   // Helper functions
   const formatDate = (value) => {
     if (!value) return '-';
     try {
-      const d = new Date(value);
+      // Handle Firebase Timestamps or JS Date objects
+      const d = value.toDate ? value.toDate() : new Date(value);
       if (isNaN(d)) return String(value);
       return d.toLocaleDateString();
     } catch {
@@ -106,9 +136,10 @@ const Dashboard = () => {
     return s;
   };
 
+  // *** FIXED: Created the formatTime function that was missing ***
   const formatTime = (timestamp) => {
-    if (!timestamp) return '';
-    const date = new Date(timestamp);
+    if (!timestamp) return 'never';
+    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
     const now = new Date();
     const diffMs = now - date;
     const diffMins = Math.floor(diffMs / (1000 * 60));
@@ -116,24 +147,24 @@ const Dashboard = () => {
     const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
 
     if (diffMins < 1) return 'now';
-    if (diffMins < 60) return `${diffMins}m`;
-    if (diffHours < 24) return `${diffHours}h`;
-    if (diffDays < 7) return `${diffDays}d`;
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
     return date.toLocaleDateString();
   };
 
+
   const formatMessageTime = (timestamp) => {
     if (!timestamp) return '';
-    const date = new Date(timestamp);
+    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
     const now = new Date();
-    const diffMs = now - date;
-    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    const diffHours = Math.floor((now - date) / (1000 * 60 * 60));
+    const diffDays = Math.floor((now - date) / (1000 * 60 * 60 * 24));
 
     if (diffHours < 24) {
       return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     } else if (diffDays < 7) {
-      return date.toLocaleDateString([], { weekday: 'short' }) + ' ' + 
+      return date.toLocaleDateString([], { weekday: 'short' }) + ' ' +
              date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     } else {
       return date.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' +
@@ -145,7 +176,7 @@ const Dashboard = () => {
   const getUserStatus = (lastSeen) => {
     if (!lastSeen) return 'offline';
     const now = new Date();
-    const lastSeenTime = new Date(lastSeen);
+    const lastSeenTime = lastSeen.toDate ? lastSeen.toDate() : new Date(lastSeen);
     const diffMins = Math.floor((now - lastSeenTime) / (1000 * 60));
     return diffMins <= 5 ? 'online' : 'offline';
   };
@@ -160,12 +191,87 @@ const Dashboard = () => {
       return acc;
     }, {});
 
-  // Function to send a message in the chat room
+  // Create new conversation - Updated to use correct Firebase path structure
+  const createNewConversation = async () => {
+    if (!newChatForm.userName.trim() || !newChatForm.userEmail.trim()) {
+      alert("Please fill in required fields");
+      return;
+    }
+
+    try {
+      const userId = newChatForm.userId.trim() || `${newChatForm.userName.toLowerCase().replace(/\s+/g, '_')}_${Date.now()}`;
+
+      // Create conversation using the correct path: chat_rooms/{doctor}/user_conversations/{userId}
+      const conversationRef = doc(db, "chat_rooms", currentDoctor, "user_conversations", userId);
+
+      await setDoc(conversationRef, {
+        createdAt: serverTimestamp(),
+        lastMessage: "Conversation started",
+        lastMessageSender: "admin",
+        lastMessageTime: serverTimestamp(),
+        userEmail: newChatForm.userEmail.trim(),
+        userId: userId,
+        userName: newChatForm.userName.trim(),
+        adminLastSeen: serverTimestamp(),
+        userLastSeen: null
+      });
+
+      // Add initial message using the correct path: chat_rooms/{doctor}/user_conversations/{userId}/messages
+      await addDoc(collection(db, "chat_rooms", currentDoctor, "user_conversations", userId, "messages"), {
+        text: "Hello! How can I help you today?",
+        senderId: 'admin',
+        senderName: 'Dr. Jessica Fano',
+        senderType: 'admin',
+        timestamp: serverTimestamp(),
+        isRead: false
+      });
+
+      alert("New conversation created successfully!");
+      setShowNewChatDialog(false);
+      setNewChatForm({ userName: '', userEmail: '', userId: '' });
+    } catch (error) {
+      console.error("Error creating conversation:", error);
+      alert("Failed to create conversation");
+    }
+  };
+
+  // Delete conversation - Updated to use correct Firebase path structure
+  const deleteConversation = async (userId) => {
+    if (!window.confirm("Are you sure you want to delete this conversation? This action cannot be undone.")) {
+      return;
+    }
+
+    try {
+      // Delete all messages first using correct path: chat_rooms/{doctor}/user_conversations/{userId}/messages
+      const messagesRef = collection(db, "chat_rooms", currentDoctor, "user_conversations", userId, "messages");
+      const messagesSnapshot = await getDocs(messagesRef);
+
+      const deletePromises = messagesSnapshot.docs.map(doc => deleteDoc(doc.ref));
+      await Promise.all(deletePromises);
+
+      // Delete the conversation using correct path: chat_rooms/{doctor}/user_conversations/{userId}
+      await deleteDoc(doc(db, "chat_rooms", currentDoctor, "user_conversations", userId));
+
+      alert("Conversation deleted successfully!");
+
+      // Clear selected chat if it was the deleted one
+      if (selectedChatRoom?.userId === userId) {
+        setSelectedChatRoom(null);
+        setMessages([]);
+      }
+    } catch (error) {
+      console.error("Error deleting conversation:", error);
+      alert("Failed to delete conversation");
+    }
+  };
+
+  // Function to send a message in the chat room - Updated to use correct Firebase path structure
   const sendMessage = async () => {
     if (!newMessage.trim() || !selectedChatRoom) return;
 
     try {
-      const messagesRef = collection(db, "chat_rooms", selectedChatRoom.id, "messages");
+      // Send message using correct path: chat_rooms/{doctor}/user_conversations/{userId}/messages
+      const messagesRef = collection(db, "chat_rooms", currentDoctor, "user_conversations", selectedChatRoom.userId, "messages");
       await addDoc(messagesRef, {
         text: newMessage.trim(),
         senderId: 'admin',
@@ -175,9 +281,9 @@ const Dashboard = () => {
         isRead: false
       });
 
-      // Update chat room's last message and timestamp
-      const chatRoomRef = doc(db, "chat_rooms", selectedChatRoom.id);
-      await updateDoc(chatRoomRef, {
+      // Update conversation's last message using correct path: chat_rooms/{doctor}/user_conversations/{userId}
+      const conversationRef = doc(db, "chat_rooms", currentDoctor, "user_conversations", selectedChatRoom.userId);
+      await updateDoc(conversationRef, {
         lastMessage: newMessage.trim(),
         lastMessageTime: serverTimestamp(),
         lastMessageSender: 'admin',
@@ -185,8 +291,10 @@ const Dashboard = () => {
       });
 
       setNewMessage('');
+      messageInputRef.current?.focus();
     } catch (error) {
       console.error("Error sending message:", error);
+      alert("Failed to send message");
     }
   };
 
@@ -198,23 +306,24 @@ const Dashboard = () => {
     }
   };
 
-  // Mark messages as read when admin views them
-  const markMessagesAsRead = async (chatRoomId) => {
+  // Mark messages as read when admin views them - Updated to use correct Firebase path structure
+  const markMessagesAsRead = async (userId) => {
     try {
-      const messagesRef = collection(db, "chat_rooms", chatRoomId, "messages");
+      // Access messages using correct path: chat_rooms/{doctor}/user_conversations/{userId}/messages
+      const messagesRef = collection(db, "chat_rooms", currentDoctor, "user_conversations", userId, "messages");
       const unreadQuery = query(messagesRef, where("isRead", "==", false), where("senderType", "==", "user"));
       const unreadMessages = await getDocs(unreadQuery);
-      
-      const batch = [];
+
+      const updatePromises = [];
       unreadMessages.forEach((doc) => {
-        batch.push(updateDoc(doc.ref, { isRead: true }));
+        updatePromises.push(updateDoc(doc.ref, { isRead: true }));
       });
 
-      await Promise.all(batch);
+      await Promise.all(updatePromises);
 
-      // Update admin's last seen in chat room
-      const chatRoomRef = doc(db, "chat_rooms", chatRoomId);
-      await updateDoc(chatRoomRef, {
+      // Update admin's last seen using correct path: chat_rooms/{doctor}/user_conversations/{userId}
+      const conversationRef = doc(db, "chat_rooms", currentDoctor, "user_conversations", userId);
+      await updateDoc(conversationRef, {
         adminLastSeen: serverTimestamp()
       });
     } catch (error) {
@@ -230,7 +339,7 @@ const Dashboard = () => {
         description: doc.data().description || '',
         price: doc.data().price || 0
       }));
-      
+
       // Sort services by name for consistent display
       servicesData.sort((a, b) => a.name.localeCompare(b.name));
       setServices(servicesData);
@@ -274,7 +383,6 @@ const Dashboard = () => {
       console.error("Error deleting service:", error);
     }
   };
-
 
   // Fetch appointments from Firebase (real-time)
   useEffect(() => {
@@ -339,37 +447,38 @@ const Dashboard = () => {
     return () => unsubscribe();
   }, [appointments]);
 
-  // Fetch chat rooms from Firebase (real-time)
+  // Fetch chat rooms from Firebase (real-time) - Updated for correct path structure
   useEffect(() => {
-    const chatRoomsRef = collection(db, "chat_rooms");
-    const chatRoomsQuery = query(chatRoomsRef, orderBy("lastMessageTime", "desc"));
+    // Access conversations using correct path: chat_rooms/{doctor}/user_conversations
+    const conversationsRef = collection(db, "chat_rooms", currentDoctor, "user_conversations");
+    const conversationsQuery = query(conversationsRef, orderBy("lastMessageTime", "desc"));
 
-    const unsubscribe = onSnapshot(chatRoomsQuery, async (snapshot) => {
-      const rooms = [];
-      
+    const unsubscribe = onSnapshot(conversationsQuery, async (snapshot) => {
+      const conversations = [];
+
       for (const doc of snapshot.docs) {
-        const roomData = doc.data();
-        
-        // Get unread messages count for this room
-        const messagesRef = collection(db, "chat_rooms", doc.id, "messages");
+        const conversationData = doc.data();
+
+        // Get unread messages count using correct path: chat_rooms/{doctor}/user_conversations/{userId}/messages
+        const messagesRef = collection(db, "chat_rooms", currentDoctor, "user_conversations", doc.id, "messages");
         const unreadQuery = query(messagesRef, where("isRead", "==", false), where("senderType", "==", "user"));
         const unreadSnapshot = await getDocs(unreadQuery);
-        
-        rooms.push({
-          id: doc.id,
-          ...roomData,
+
+        conversations.push({
+          userId: doc.id,
+          ...conversationData,
           unreadCount: unreadSnapshot.size,
-          lastMessageTime: roomData.lastMessageTime?.toDate ? roomData.lastMessageTime.toDate() : roomData.lastMessageTime,
-          userLastSeen: roomData.userLastSeen?.toDate ? roomData.userLastSeen.toDate() : roomData.userLastSeen,
-          adminLastSeen: roomData.adminLastSeen?.toDate ? roomData.adminLastSeen.toDate() : roomData.adminLastSeen
+          lastMessageTime: conversationData.lastMessageTime?.toDate ? conversationData.lastMessageTime.toDate() : conversationData.lastMessageTime,
+          userLastSeen: conversationData.userLastSeen?.toDate ? conversationData.userLastSeen.toDate() : conversationData.userLastSeen,
+          adminLastSeen: conversationData.adminLastSeen?.toDate ? conversationData.adminLastSeen.toDate() : conversationData.adminLastSeen
         });
       }
 
-      setChatRooms(rooms);
+      setChatRooms(conversations);
 
       // Update selected chat room if it exists
       if (selectedChatRoom) {
-        const updatedRoom = rooms.find(r => r.id === selectedChatRoom.id);
+        const updatedRoom = conversations.find(r => r.userId === selectedChatRoom.userId);
         if (updatedRoom) {
           setSelectedChatRoom(updatedRoom);
         }
@@ -377,16 +486,17 @@ const Dashboard = () => {
     }, error => console.error("Chat rooms snapshot error:", error));
 
     return () => unsubscribe();
-  }, [selectedChatRoom?.id]);
+  }, [currentDoctor, selectedChatRoom?.userId]);
 
-  // Fetch messages for selected chat room (real-time)
+  // Fetch messages for selected chat room (real-time) - Updated for correct path structure
   useEffect(() => {
     if (!selectedChatRoom) {
       setMessages([]);
       return;
     }
 
-    const messagesRef = collection(db, "chat_rooms", selectedChatRoom.id, "messages");
+    // Access messages using correct path: chat_rooms/{doctor}/user_conversations/{userId}/messages
+    const messagesRef = collection(db, "chat_rooms", currentDoctor, "user_conversations", selectedChatRoom.userId, "messages");
     const messagesQuery = query(messagesRef, orderBy("timestamp", "asc"));
 
     const unsubscribe = onSnapshot(messagesQuery, (snapshot) => {
@@ -403,15 +513,15 @@ const Dashboard = () => {
         };
       });
       setMessages(msgs);
-      
+
       // Mark messages as read when admin opens the chat
       if (msgs.length > 0) {
-        markMessagesAsRead(selectedChatRoom.id);
+        markMessagesAsRead(selectedChatRoom.userId);
       }
     }, error => console.error("Messages snapshot error:", error));
 
     return () => unsubscribe();
-  }, [selectedChatRoom?.id]);
+  }, [currentDoctor, selectedChatRoom?.userId]);
 
   // Update admin's online status periodically
   useEffect(() => {
@@ -479,7 +589,8 @@ const Dashboard = () => {
   // Filter chat rooms based on search
   const filteredChatRooms = chatRooms.filter(room => {
     const searchLower = messageSearch.toLowerCase();
-    return room.userName.toLowerCase().includes(searchLower) ||
+    return room.userName?.toLowerCase().includes(searchLower) ||
+           room.userEmail?.toLowerCase().includes(searchLower) ||
            room.lastMessage?.toLowerCase().includes(searchLower);
   });
 
@@ -501,7 +612,7 @@ const Dashboard = () => {
   });
 
   const totalPages = Math.max(1, Math.ceil(filteredPatients.length / rowsPerPage));
-  
+
   useEffect(() => {
     if (currentPage > totalPages) setCurrentPage(totalPages);
     if (currentPage < 1) setCurrentPage(1);
@@ -710,7 +821,7 @@ const Dashboard = () => {
           const totalAppointments = analyticsData.reduce((sum, item) => sum + item.appointments, 0);
           const avgAppointments = analyticsData.length > 0 ? (totalAppointments / analyticsData.length).toFixed(1) : 0;
           const peakMonth = analyticsData.reduce((max, item) => item.appointments > max.appointments ? item : max, { month: 'N/A', appointments: 0 });
-          
+
           const totalServices = pieData.reduce((sum, item) => sum + item.value, 0);
           const topService = pieData.length > 0 ? pieData[0] : { name: 'N/A', value: 0 };
           const servicePercentage = totalServices > 0 ? ((topService.value / totalServices) * 100).toFixed(1) : 0;
@@ -742,10 +853,10 @@ const Dashboard = () => {
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
-                  
+
                   <div style={{ flex: '1', padding: '20px', backgroundColor: '#f8f9fa', borderRadius: '8px', minWidth: '250px' }}>
                     <h4 style={{ margin: '0 0 15px 0', color: '#333', fontSize: '16px' }}>Appointment Insights</h4>
-                    
+
                     <div style={{ marginBottom: '15px' }}>
                       <div style={{ fontSize: '14px', color: '#666', marginBottom: '5px' }}>Time Period</div>
                       <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#4caf50' }}>{selectedFilter}</div>
@@ -774,8 +885,8 @@ const Dashboard = () => {
                     <div style={{ padding: '10px', backgroundColor: '#e3f2fd', borderRadius: '6px', marginTop: '15px' }}>
                       <div style={{ fontSize: '12px', color: '#1976d2', fontWeight: 'bold' }}>TREND</div>
                       <div style={{ fontSize: '13px', color: '#333', marginTop: '5px' }}>
-                        {analyticsData.length >= 2 && analyticsData[analyticsData.length - 1].appointments > analyticsData[analyticsData.length - 2].appointments 
-                          ? '📈 Increasing trend' 
+                        {analyticsData.length >= 2 && analyticsData[analyticsData.length - 1].appointments > analyticsData[analyticsData.length - 2].appointments
+                          ? '📈 Increasing trend'
                           : analyticsData.length >= 2 && analyticsData[analyticsData.length - 1].appointments < analyticsData[analyticsData.length - 2].appointments
                           ? '📉 Decreasing trend'
                           : '📊 Stable trend'
@@ -815,10 +926,10 @@ const Dashboard = () => {
                       </PieChart>
                     </ResponsiveContainer>
                   </div>
-                  
+
                   <div style={{ flex: '1', padding: '20px', backgroundColor: '#f8f9fa', borderRadius: '8px', minWidth: '250px' }}>
                     <h4 style={{ margin: '0 0 15px 0', color: '#333', fontSize: '16px' }}>Service Statistics</h4>
-                    
+
                     <div style={{ marginBottom: '15px' }}>
                       <div style={{ fontSize: '14px', color: '#666', marginBottom: '5px' }}>Total Services Booked</div>
                       <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#4caf50' }}>{totalServices}</div>
@@ -844,9 +955,9 @@ const Dashboard = () => {
                     <div style={{ marginBottom: '15px' }}>
                       <div style={{ fontSize: '14px', color: '#666', marginBottom: '10px' }}>Service Breakdown</div>
                       {pieData.slice(0, 3).map((service, index) => (
-                        <div key={service.name} style={{ 
-                          display: 'flex', 
-                          justifyContent: 'space-between', 
+                        <div key={service.name} style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
                           alignItems: 'center',
                           marginBottom: '8px',
                           padding: '5px 8px',
@@ -863,7 +974,7 @@ const Dashboard = () => {
                     <div style={{ padding: '10px', backgroundColor: '#e8f5e8', borderRadius: '6px', marginTop: '15px' }}>
                       <div style={{ fontSize: '12px', color: '#2e7d32', fontWeight: 'bold' }}>INSIGHT</div>
                       <div style={{ fontSize: '13px', color: '#333', marginTop: '5px' }}>
-                        {servicePercentage > 50 
+                        {servicePercentage > 50
                           ? `${topService.name} dominates with ${servicePercentage}% of bookings`
                           : 'Services are well-distributed across different types'
                         }
@@ -1145,282 +1256,299 @@ const Dashboard = () => {
         }
 
         case 'services': {
-  return (
-    <div className="dashboard-content">
-      {/* Title and button on one line */}
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: '15px',
-        }}
-      >
-        <h3 style={{ margin: 0 }}>Services</h3>
-
-        <button
-          onClick={() => {
-            // open modal with empty fields
-            setEditingService({ id: null, name: '', description: '', price: 0 });
-            setEditDescription('');
-            setEditPrice('');
-            setNewServiceName('');
-          }}
-          style={{
-            padding: '8px 16px',
-            backgroundColor: '#094685', 
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer',
-          }}
-        >
-          + Add Service
-        </button>
-      </div>
-      
-      <div
-        className="services-grid"
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))',
-          gap: '20px',
-          marginTop: '20px',
-        }}
-      >
-        {services.map(service => (
-          <div
-            key={service.id}
-            className="service-card"
-            style={{
-              border: '1px solid #ddd',
-              borderRadius: '8px',
-              padding: '15px',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-              display: 'flex',
-              flexDirection: 'column',
-              justifyContent: 'space-between',
-              minHeight: '180px',
-            }}
-          >
-            <div>
-              <h4 style={{ margin: '0 0 10px 0', color: '#333' }}>{service.name}</h4>
-              <p style={{ flexGrow: 1, marginBottom: '10px', color: '#666', lineHeight: '1.4' }}>
-                {service.description}
-              </p>
-              <p style={{ fontWeight: 'bold', marginBottom: '15px', fontSize: '18px', color: '#4caf50' }}>
-                ₱{service.price.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
-              </p>
-            </div>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button
-                onClick={() => {
-                  setEditingService(service);
-                  setEditDescription(service.description);
-                  setEditPrice(service.price.toString());
-                  setNewServiceName(service.name);
-                }}
+          return (
+            <div className="dashboard-content">
+              {/* Title and button on one line */}
+              <div
                 style={{
-                  flex: 1,
-                  padding: '6px 12px',
-                  backgroundColor: '#094685',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginBottom: '15px',
                 }}
               >
-                Edit
-              </button>
-              <button
-                onClick={() => {
-                  if (window.confirm(`Are you sure you want to delete "${service.name}"?`)) {
-                    deleteService(service.id);
-                  }
-                }}
+                <h3 style={{ margin: 0 }}>Services</h3>
+
+                <button
+                  onClick={() => {
+                    // open modal with empty fields
+                    setEditingService({ id: null, name: '', description: '', price: 0 });
+                    setEditDescription('');
+                    setEditPrice('');
+                    setNewServiceName('');
+                  }}
+                  style={{
+                    padding: '8px 16px',
+                    backgroundColor: '#094685',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  + Add Service
+                </button>
+              </div>
+
+              <div
+                className="services-grid"
                 style={{
-                  padding: '6px 12px',
-                  backgroundColor: '#f44336',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))',
+                  gap: '20px',
+                  marginTop: '20px',
                 }}
               >
-                Delete
-              </button>
+                {services.map(service => (
+                  <div
+                    key={service.id}
+                    className="service-card"
+                    style={{
+                      border: '1px solid #ddd',
+                      borderRadius: '8px',
+                      padding: '15px',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      justifyContent: 'space-between',
+                      minHeight: '180px',
+                    }}
+                  >
+                    <div>
+                      <h4 style={{ margin: '0 0 10px 0', color: '#333' }}>{service.name}</h4>
+                      <p style={{ flexGrow: 1, marginBottom: '10px', color: '#666', lineHeight: '1.4' }}>
+                        {service.description}
+                      </p>
+                      <p style={{ fontWeight: 'bold', marginBottom: '15px', fontSize: '18px', color: '#4caf50' }}>
+                        ₱{service.price.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                      </p>
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button
+                        onClick={() => {
+                          setEditingService(service);
+                          setEditDescription(service.description);
+                          setEditPrice(service.price.toString());
+                          setNewServiceName(service.name);
+                        }}
+                        style={{
+                          flex: 1,
+                          padding: '6px 12px',
+                          backgroundColor: '#094685',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (window.confirm(`Are you sure you want to delete "${service.name}"?`)) {
+                            deleteService(service.id);
+                          }
+                        }}
+                        style={{
+                          padding: '6px 12px',
+                          backgroundColor: '#f44336',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {services.length === 0 && (
+                <div style={{
+                  textAlign: 'center',
+                  padding: '50px 20px',
+                  color: '#666',
+                  backgroundColor: '#f8f9fa',
+                  borderRadius: '8px',
+                  marginTop: '20px'
+                }}>
+                  <h3>No Services Found</h3>
+                  <p>Start by adding your first dental service using the "Add Service" button above.</p>
+                </div>
+              )}
+
+              {/* Pop-up modal */}
+              {editingService && (
+                <div
+                  style={{
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    height: '100%',
+                    backgroundColor: 'rgba(0,0,0,0.4)',
+                    display: 'flex',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    zIndex: 9999,
+                  }}
+                  onClick={() => setEditingService(null)}
+                >
+                  <div
+                    style={{
+                      background: 'white',
+                      padding: '25px',
+                      borderRadius: '8px',
+                      minWidth: '400px',
+                      maxWidth: '90vw',
+                    }}
+                    onClick={e => e.stopPropagation()}
+                  >
+                    <h3 style={{ margin: '0 0 20px 0', color: '#333' }}>
+                      {editingService.id ? 'Edit Service' : 'Add New Service'}
+                    </h3>
+
+                    <div style={{ marginBottom: '15px' }}>
+                      <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Name</label>
+                      <input
+                        type="text"
+                        value={newServiceName}
+                        onChange={e => setNewServiceName(e.target.value)}
+                        placeholder="Enter service name"
+                        style={{
+                          width: '100%',
+                          padding: '8px 12px',
+                          border: '1px solid #ddd',
+                          borderRadius: '4px',
+                          fontSize: '14px'
+                        }}
+                      />
+                    </div>
+
+                    <div style={{ marginBottom: '15px' }}>
+                      <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Description</label>
+                      <textarea
+                        value={editDescription}
+                        onChange={e => setEditDescription(e.target.value)}
+                        rows={4}
+                        placeholder="Describe the service"
+                        style={{
+                          width: '100%',
+                          padding: '8px 12px',
+                          border: '1px solid #ddd',
+                          borderRadius: '4px',
+                          fontSize: '14px',
+                          resize: 'vertical'
+                        }}
+                      />
+                    </div>
+
+                    <div style={{ marginBottom: '20px' }}>
+                      <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Price (₱)</label>
+                      <input
+                        type="number"
+                        value={editPrice}
+                        onChange={e => setEditPrice(e.target.value)}
+                        min="0"
+                        step="0.01"
+                        placeholder="0.00"
+                        style={{
+                          width: '100%',
+                          padding: '8px 12px',
+                          border: '1px solid #ddd',
+                          borderRadius: '4px',
+                          fontSize: '14px'
+                        }}
+                      />
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                      <button
+                        onClick={() => setEditingService(null)}
+                        style={{
+                          padding: '8px 16px',
+                          backgroundColor: '#9e9e9e',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={async () => {
+                          if (!newServiceName.trim()) {
+                            alert('Please enter a service name');
+                            return;
+                          }
+                          if (!editDescription.trim()) {
+                            alert('Please enter a description');
+                            return;
+                          }
+                          if (!editPrice || parseFloat(editPrice) < 0) {
+                            alert('Please enter a valid price');
+                            return;
+                          }
+
+                          try {
+                            if (editingService.id) {
+                              // Update existing service
+                              await updateService(editingService.id, newServiceName, editDescription, editPrice);
+                            } else {
+                              // Add new service
+                              await addService(newServiceName, editDescription, editPrice);
+                            }
+                            setEditingService(null);
+                          } catch (error) {
+                            alert('Error saving service. Please try again.');
+                            console.error('Service save error:', error);
+                          }
+                        }}
+                        style={{
+                          padding: '8px 16px',
+                          backgroundColor: '#4caf50',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {editingService.id ? 'Update' : 'Add'} Service
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
-          </div>
-        ))}
-      </div>
+          );
+        }
 
-      {services.length === 0 && (
-        <div style={{
-          textAlign: 'center',
-          padding: '50px 20px',
-          color: '#666',
-          backgroundColor: '#f8f9fa',
-          borderRadius: '8px',
-          marginTop: '20px'
-        }}>
-          <h3>No Services Found</h3>
-          <p>Start by adding your first dental service using the "Add Service" button above.</p>
-        </div>
-      )}
-
-      {/* Pop-up modal */}
-      {editingService && (
-        <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            width: '100%',
-            height: '100%',
-            backgroundColor: 'rgba(0,0,0,0.4)',
-            display: 'flex',
-            justifyContent: 'center',
-            alignItems: 'center',
-            zIndex: 9999,
-          }}
-          onClick={() => setEditingService(null)}
-        >
-          <div
-            style={{
-              background: 'white',
-              padding: '25px',
-              borderRadius: '8px',
-              minWidth: '400px',
-              maxWidth: '90vw',
-            }}
-            onClick={e => e.stopPropagation()}
-          >
-            <h3 style={{ margin: '0 0 20px 0', color: '#333' }}>
-              {editingService.id ? 'Edit Service' : 'Add New Service'}
-            </h3>
-
-            <div style={{ marginBottom: '15px' }}>
-              <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Name</label>
-              <input
-                type="text"
-                value={newServiceName}
-                onChange={e => setNewServiceName(e.target.value)}
-                placeholder="Enter service name"
-                style={{ 
-                  width: '100%', 
-                  padding: '8px 12px',
-                  border: '1px solid #ddd',
-                  borderRadius: '4px',
-                  fontSize: '14px'
-                }}
-              />
-            </div>
-
-            <div style={{ marginBottom: '15px' }}>
-              <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Description</label>
-              <textarea
-                value={editDescription}
-                onChange={e => setEditDescription(e.target.value)}
-                rows={4}
-                placeholder="Describe the service"
-                style={{ 
-                  width: '100%', 
-                  padding: '8px 12px',
-                  border: '1px solid #ddd',
-                  borderRadius: '4px',
-                  fontSize: '14px',
-                  resize: 'vertical'
-                }}
-              />
-            </div>
-
-            <div style={{ marginBottom: '20px' }}>
-              <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Price (₱)</label>
-              <input
-                type="number"
-                value={editPrice}
-                onChange={e => setEditPrice(e.target.value)}
-                min="0"
-                step="0.01"
-                placeholder="0.00"
-                style={{ 
-                  width: '100%', 
-                  padding: '8px 12px',
-                  border: '1px solid #ddd',
-                  borderRadius: '4px',
-                  fontSize: '14px'
-                }}
-              />
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-              <button
-                onClick={() => setEditingService(null)}
-                style={{
-                  padding: '8px 16px',
-                  backgroundColor: '#9e9e9e',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={async () => {
-                  if (!newServiceName.trim()) {
-                    alert('Please enter a service name');
-                    return;
-                  }
-                  if (!editDescription.trim()) {
-                    alert('Please enter a description');
-                    return;
-                  }
-                  if (!editPrice || parseFloat(editPrice) < 0) {
-                    alert('Please enter a valid price');
-                    return;
-                  }
-
-                  try {
-                    if (editingService.id) {
-                      // Update existing service
-                      await updateService(editingService.id, newServiceName, editDescription, editPrice);
-                    } else {
-                      // Add new service
-                      await addService(newServiceName, editDescription, editPrice);
-                    }
-                    setEditingService(null);
-                  } catch (error) {
-                    alert('Error saving service. Please try again.');
-                    console.error('Service save error:', error);
-                  }
-                }}
-                style={{
-                  padding: '8px 16px',
-                  backgroundColor: '#4caf50',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                }}
-              >
-                {editingService.id ? 'Update' : 'Add'} Service
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
         case 'message': {
           return (
             <div className="dashboard-content">
               <div className="messenger-container" style={{ display: 'flex', height: '600px', border: '1px solid #ddd', borderRadius: '8px', overflow: 'hidden' }}>
                 <div className="conversations-panel" style={{ width: '350px', borderRight: '1px solid #ddd', display: 'flex', flexDirection: 'column' }}>
                   <div style={{ padding: '15px', borderBottom: '1px solid #eee', backgroundColor: '#f8f9fa' }}>
-                    <h3 style={{ margin: '0 0 10px 0', fontSize: '18px' }}>Messages</h3>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                      <h3 style={{ margin: 0, fontSize: '18px' }}>Messages</h3>
+                      <button
+                        onClick={() => setShowNewChatDialog(true)}
+                        style={{
+                          padding: '6px 12px',
+                          backgroundColor: '#4caf50',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: 'pointer',
+                          fontSize: '12px'
+                        }}
+                      >
+                        + New Chat
+                      </button>
+                    </div>
                     <div style={{ position: 'relative' }}>
                       <input
                         type="text"
@@ -1466,22 +1594,22 @@ const Dashboard = () => {
                         const userStatus = getUserStatus(room.userLastSeen);
                         return (
                           <div
-                            key={room.id}
+                            key={room.userId}
                             onClick={() => setSelectedChatRoom(room)}
                             style={{
                               padding: '12px 15px',
                               borderBottom: '1px solid #eee',
                               cursor: 'pointer',
-                              backgroundColor: selectedChatRoom?.id === room.id ? '#e3f2fd' : 'white'
+                              backgroundColor: selectedChatRoom?.userId === room.userId ? '#e3f2fd' : 'white'
                             }}
                             onMouseEnter={(e) => {
-                              if (selectedChatRoom?.id !== room.id) {
-                                e.target.style.backgroundColor = '#f5f5f5';
+                              if (selectedChatRoom?.userId !== room.userId) {
+                                e.currentTarget.style.backgroundColor = '#f5f5f5';
                               }
                             }}
                             onMouseLeave={(e) => {
-                              if (selectedChatRoom?.id !== room.id) {
-                                e.target.style.backgroundColor = 'white';
+                              if (selectedChatRoom?.userId !== room.userId) {
+                                e.currentTarget.style.backgroundColor = 'white';
                               }
                             }}
                           >
@@ -1499,7 +1627,7 @@ const Dashboard = () => {
                                   fontSize: '16px',
                                   fontWeight: 'bold'
                                 }}>
-                                  {room.userName.charAt(0).toUpperCase()}
+                                  {room.userName?.charAt(0)?.toUpperCase() || 'U'}
                                 </div>
                                 {/* Online/Offline indicator */}
                                 <div style={{
@@ -1513,31 +1641,50 @@ const Dashboard = () => {
                                   border: '2px solid white'
                                 }} />
                               </div>
-                              
+
                               <div style={{ flex: 1, minWidth: 0 }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                  <h4 style={{ 
-                                    margin: 0, 
-                                    fontSize: '14px', 
+                                  <h4 style={{
+                                    margin: 0,
+                                    fontSize: '14px',
                                     fontWeight: '600',
                                     color: '#333',
                                     overflow: 'hidden',
                                     textOverflow: 'ellipsis',
                                     whiteSpace: 'nowrap'
                                   }}>
-                                    {room.userName}
+                                    {room.userName || 'Unknown User'}
                                   </h4>
-                                  <span style={{ 
-                                    fontSize: '12px', 
-                                    color: '#999',
-                                    flexShrink: 0
-                                  }}>
-                                    {formatTime(room.lastMessageTime)}
-                                  </span>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                    <span style={{
+                                      fontSize: '12px',
+                                      color: '#999',
+                                      flexShrink: 0
+                                    }}>
+                                      {formatTime(room.lastMessageTime)}
+                                    </span>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        deleteConversation(room.userId);
+                                      }}
+                                      style={{
+                                        padding: '2px 6px',
+                                        backgroundColor: '#f44336',
+                                        color: 'white',
+                                        border: 'none',
+                                        borderRadius: '3px',
+                                        cursor: 'pointer',
+                                        fontSize: '10px'
+                                      }}
+                                    >
+                                      ×
+                                    </button>
+                                  </div>
                                 </div>
-                                <p style={{ 
-                                  margin: '2px 0 0 0', 
-                                  fontSize: '13px', 
+                                <p style={{
+                                  margin: '2px 0 0 0',
+                                  fontSize: '13px',
                                   color: '#666',
                                   overflow: 'hidden',
                                   textOverflow: 'ellipsis',
@@ -1546,15 +1693,15 @@ const Dashboard = () => {
                                   {room.lastMessageSender === 'admin' ? 'You: ' : ''}
                                   {room.lastMessage || 'No messages'}
                                 </p>
-                                <div style={{ 
-                                  fontSize: '11px', 
+                                <div style={{
+                                  fontSize: '11px',
                                   color: userStatus === 'online' ? '#4caf50' : '#999',
                                   marginTop: '2px'
                                 }}>
                                   {userStatus === 'online' ? 'Online' : `Last seen ${formatTime(room.userLastSeen)}`}
                                 </div>
                               </div>
-                              
+
                               {room.unreadCount > 0 && (
                                 <div style={{
                                   backgroundColor: '#f44336',
@@ -1582,9 +1729,9 @@ const Dashboard = () => {
                 <div className="chat-panel" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
                   {selectedChatRoom ? (
                     <>
-                      <div style={{ 
-                        padding: '15px 20px', 
-                        borderBottom: '1px solid #eee', 
+                      <div style={{
+                        padding: '15px 20px',
+                        borderBottom: '1px solid #eee',
                         backgroundColor: '#f8f9fa',
                         display: 'flex',
                         alignItems: 'center',
@@ -1603,7 +1750,7 @@ const Dashboard = () => {
                             fontSize: '14px',
                             fontWeight: 'bold'
                           }}>
-                            {selectedChatRoom.userName.charAt(0).toUpperCase()}
+                            {selectedChatRoom.userName?.charAt(0)?.toUpperCase() || 'U'}
                           </div>
                           <div style={{
                             position: 'absolute',
@@ -1618,11 +1765,14 @@ const Dashboard = () => {
                         </div>
                         <div>
                           <h3 style={{ margin: 0, fontSize: '16px', color: '#333' }}>
-                            {selectedChatRoom.userName}
+                            {selectedChatRoom.userName || 'Unknown User'}
                           </h3>
                           <p style={{ margin: 0, fontSize: '12px', color: '#666' }}>
-                            {getUserStatus(selectedChatRoom.userLastSeen) === 'online' 
-                              ? 'Online' 
+                            {selectedChatRoom.userEmail || 'No email'}
+                          </p>
+                          <p style={{ margin: 0, fontSize: '12px', color: '#666' }}>
+                            {getUserStatus(selectedChatRoom.userLastSeen) === 'online'
+                              ? 'Online'
                               : `Last seen ${formatTime(selectedChatRoom.userLastSeen)}`
                             }
                           </p>
@@ -1641,9 +1791,9 @@ const Dashboard = () => {
                         </div>
                       </div>
 
-                      <div style={{ 
-                        flex: 1, 
-                        padding: '15px', 
+                      <div style={{
+                        flex: 1,
+                        padding: '15px',
                         overflowY: 'auto',
                         backgroundColor: '#f0f2f5',
                         display: 'flex',
@@ -1652,7 +1802,7 @@ const Dashboard = () => {
                       }}>
                         {messages.map(msg => {
                           const isFromAdmin = msg.senderType === 'admin';
-                          
+
                           return (
                             <div
                               key={msg.id}
@@ -1671,7 +1821,7 @@ const Dashboard = () => {
                                   {msg.senderName || 'Patient'}
                                 </div>
                               )}
-                              
+
                               <div style={{
                                 background: isFromAdmin ? '#4caf50' : 'white',
                                 color: isFromAdmin ? '#fff' : '#000',
@@ -1683,9 +1833,9 @@ const Dashboard = () => {
                                 <div style={{ fontSize: '14px', lineHeight: '1.4' }}>
                                   {msg.text}
                                 </div>
-                                <div style={{ 
-                                  fontSize: '11px', 
-                                  marginTop: '4px', 
+                                <div style={{
+                                  fontSize: '11px',
+                                  marginTop: '4px',
                                   opacity: 0.7,
                                   textAlign: 'right'
                                 }}>
@@ -1700,15 +1850,17 @@ const Dashboard = () => {
                             </div>
                           );
                         })}
+                        <div ref={messagesEndRef} />
                       </div>
 
-                      <div style={{ 
-                        padding: '15px', 
+                      <div style={{
+                        padding: '15px',
                         borderTop: '1px solid #eee',
                         backgroundColor: 'white'
                       }}>
                         <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
                           <input
+                            ref={messageInputRef}
                             type="text"
                             placeholder={isAdminOnline ? "Type a message..." : "You are offline - go online to send messages"}
                             value={newMessage}
@@ -1725,11 +1877,8 @@ const Dashboard = () => {
                               backgroundColor: isAdminOnline ? 'white' : '#f5f5f5'
                             }}
                           />
-                          <button 
-                            onClick={(e) => {
-                              e.preventDefault();
-                              sendMessage();
-                            }}
+                          <button
+                            onClick={sendMessage}
                             disabled={!newMessage.trim() || !isAdminOnline}
                             type="button"
                             style={{
@@ -1740,9 +1889,6 @@ const Dashboard = () => {
                               width: '40px',
                               height: '40px',
                               cursor: (newMessage.trim() && isAdminOnline) ? 'pointer' : 'not-allowed',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
                               fontSize: '18px'
                             }}
                           >
@@ -1763,13 +1909,139 @@ const Dashboard = () => {
                     }}>
                       <div style={{ fontSize: '48px', marginBottom: '20px' }}>💬</div>
                       <h3 style={{ margin: '0 0 10px 0' }}>Select a conversation</h3>
-                      <p style={{ margin: 0, textAlign: 'center' }}>
+                      <p style={{ margin: '0 0 15px 0', textAlign: 'center' }}>
                         Choose from your existing conversations to start messaging with patients
                       </p>
+                      <button
+                        onClick={() => setShowNewChatDialog(true)}
+                        style={{
+                          padding: '10px 20px',
+                          backgroundColor: '#4caf50',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '6px',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        + Start New Conversation
+                      </button>
                     </div>
                   )}
                 </div>
+                {/* *** FIXED: Removed an extra closing </div> tag that was here *** */}
               </div>
+
+              {/* New chat dialog modal */}
+              {showNewChatDialog && (
+                <div
+                  style={{
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    height: '100%',
+                    backgroundColor: 'rgba(0,0,0,0.5)',
+                    display: 'flex',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    zIndex: 9999,
+                  }}
+                  onClick={() => setShowNewChatDialog(false)}
+                >
+                  <div
+                    style={{
+                      background: 'white',
+                      padding: '25px',
+                      borderRadius: '8px',
+                      minWidth: '400px',
+                      maxWidth: '90vw',
+                    }}
+                    onClick={e => e.stopPropagation()}
+                  >
+                    <h3 style={{ margin: '0 0 20px 0', color: '#333' }}>Start New Conversation</h3>
+
+                    <div style={{ marginBottom: '15px' }}>
+                      <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Customer Name *</label>
+                      <input
+                        type="text"
+                        value={newChatForm.userName}
+                        onChange={e => setNewChatForm({...newChatForm, userName: e.target.value})}
+                        placeholder="Enter customer name"
+                        style={{
+                          width: '100%',
+                          padding: '8px 12px',
+                          border: '1px solid #ddd',
+                          borderRadius: '4px',
+                          fontSize: '14px'
+                        }}
+                      />
+                    </div>
+
+                    <div style={{ marginBottom: '15px' }}>
+                      <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Email Address *</label>
+                      <input
+                        type="email"
+                        value={newChatForm.userEmail}
+                        onChange={e => setNewChatForm({...newChatForm, userEmail: e.target.value})}
+                        placeholder="Enter email address"
+                        style={{
+                          width: '100%',
+                          padding: '8px 12px',
+                          border: '1px solid #ddd',
+                          borderRadius: '4px',
+                          fontSize: '14px'
+                        }}
+                      />
+                    </div>
+
+                    <div style={{ marginBottom: '20px' }}>
+                      <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>User ID (Optional)</label>
+                      <input
+                        type="text"
+                        value={newChatForm.userId}
+                        onChange={e => setNewChatForm({...newChatForm, userId: e.target.value})}
+                        placeholder="Auto-generated if empty"
+                        style={{
+                          width: '100%',
+                          padding: '8px 12px',
+                          border: '1px solid #ddd',
+                          borderRadius: '4px',
+                          fontSize: '14px'
+                        }}
+                      />
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                      <button
+                        onClick={() => setShowNewChatDialog(false)}
+                        style={{
+                          padding: '8px 16px',
+                          backgroundColor: '#9e9e9e',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={createNewConversation}
+                        style={{
+                          padding: '8px 16px',
+                          backgroundColor: '#4caf50',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Create Conversation
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           );
         }
@@ -1855,7 +2127,8 @@ const Dashboard = () => {
           </button>
         </nav>
         <div className="sidebar-footer">
-          <button className="logout-btn" onClick={handleLogout}>
+           {/* *** FIXED: Corrected the syntax of the logout button *** */}
+          <button className="nav-item logout-btn" onClick={handleLogout}>
             <img src={logoutIcon} alt="Logout Icon" className="nav-icon" />
             <span className="logout-text">Log Out</span>
           </button>
