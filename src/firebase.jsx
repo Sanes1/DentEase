@@ -9,7 +9,7 @@ const firebaseConfig = {
   apiKey: "AIzaSyAnJK-wIZQpXgrON757AM4gwkPRRPLi17Q",
   authDomain: "dentease-app.firebaseapp.com",
   projectId: "dentease-app",
-  storageBucket: "dentease-app.appspot.com",
+  storageBucket: "dentease-app.firebasestorage.app",
   messagingSenderId: "526321098823",
   appId: "1:526321098823:web:d8d7be6454995441a09162",
   measurementId: "G-WC4LPH21NW"

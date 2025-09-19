@@ -37,7 +37,6 @@ import 'react-calendar/dist/Calendar.css';
 //appointment export file
 import jsPDF from "jspdf";
 
-
 //service image upload
 import {
   ref,
@@ -139,15 +138,20 @@ const Dashboard = () => {
   doc.save("appointments.pdf");
 };
 
-
-  // Services tab states
+  // Services tab states - UPDATED TO MATCH YOUR DATABASE STRUCTURE
   const [services, setServices] = useState([]);
   const [editingService, setEditingService] = useState(null);
-  const [newServiceName, setNewServiceName] = useState('');
-  const [editDescription, setEditDescription] = useState('');
-  const [editPrice, setEditPrice] = useState('');
+  const [serviceForm, setServiceForm] = useState({
+    name: '',
+    description: '',
+    price: '',
+    category: '',
+    icon: '',
+    order: 0,
+    isActive: true
+  });
 
-  // ADD THESE NEW STATES FOR IMAGE UPLOAD:
+  // Image upload states
   const [selectedImage, setSelectedImage] = useState(null);
   const [imagePreview, setImagePreview] = useState('');
   const [uploadingImage, setUploadingImage] = useState(false);
@@ -184,122 +188,100 @@ const Dashboard = () => {
   };
 
   // Upload image to Firebase Storage
-  // Replace your uploadServiceImage function with this debug version
-const uploadServiceImage = async (imageFile) => {
-  try {
-    // Step 1: Validate file
-    console.log('🔍 Step 1: Validating file...');
-    if (!imageFile) {
-      throw new Error('No image file provided');
-    }
-    console.log('✅ File provided:', imageFile.name, 'Size:', imageFile.size, 'Type:', imageFile.type);
-
-    // Check file size (5MB limit)
-    if (imageFile.size > 5 * 1024 * 1024) {
-      throw new Error('Image size must be less than 5MB');
-    }
-    console.log('✅ File size OK');
-
-    // Check file type
-    if (!imageFile.type.startsWith('image/')) {
-      throw new Error('File must be an image');
-    }
-    console.log('✅ File type OK');
-
-    // Step 2: Check Firebase Storage instance
-    console.log('🔍 Step 2: Checking Firebase Storage...');
-    console.log('Storage instance:', storage);
-    if (!storage) {
-      throw new Error('Firebase Storage not initialized');
-    }
-    console.log('✅ Firebase Storage initialized');
-
-    // Step 3: Create reference
-    console.log('🔍 Step 3: Creating storage reference...');
-    const timestamp = Date.now();
-    const cleanFileName = imageFile.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-    const fileName = `service_${timestamp}_${cleanFileName}`;
-    const storagePath = `localImage/${fileName}`;
-    
-    console.log('📁 Storage path:', storagePath);
-    
-    const imageRef = ref(storage, storagePath);
-    console.log('✅ Storage reference created:', imageRef);
-
-    // Step 4: Attempt upload
-    console.log('🔍 Step 4: Starting upload...');
-    console.log('📤 Uploading to Firebase Storage...');
-    
-    // Add metadata for debugging
-    const metadata = {
-      contentType: imageFile.type,
-      customMetadata: {
-        uploadedBy: 'admin',
-        uploadedAt: new Date().toISOString(),
-        originalName: imageFile.name
+  const uploadServiceImage = async (imageFile) => {
+    try {
+      console.log('🔍 Step 1: Validating file...');
+      if (!imageFile) {
+        throw new Error('No image file provided');
       }
-    };
-    
-    const snapshot = await uploadBytes(imageRef, imageFile, metadata);
-    console.log('✅ Upload completed successfully!');
-    console.log('📋 Upload snapshot:', snapshot);
-    
-    // Step 5: Get download URL
-    console.log('🔍 Step 5: Getting download URL...');
-    const downloadURL = await getDownloadURL(snapshot.ref);
-    console.log('✅ Download URL obtained:', downloadURL);
-    
-    return downloadURL;
-    
-  } catch (error) {
-    console.error('❌ Upload failed at step:', error.message);
-    console.error('🔧 Full error details:', error);
-    console.error('📊 Error code:', error.code);
-    console.error('📊 Error name:', error.name);
-    
-    // Firebase Storage specific error handling
-    if (error.code) {
-      switch (error.code) {
-        case 'storage/unauthorized':
-          console.error('🚫 PERMISSION ERROR: Check Firebase Storage Rules');
-          throw new Error('Upload failed: You do not have permission to upload files. Please check Firebase Storage security rules.');
-        case 'storage/canceled':
-          console.error('❌ CANCELLED: Upload was cancelled');
-          throw new Error('Upload was cancelled');
-        case 'storage/unknown':
-          console.error('❓ UNKNOWN ERROR: Network or server issue');
-          throw new Error('Upload failed due to unknown error. Check your internet connection and try again.');
-        case 'storage/invalid-format':
-          console.error('📁 FORMAT ERROR: Invalid file format');
-          throw new Error('Invalid file format');
-        case 'storage/object-not-found':
-          console.error('🔍 NOT FOUND: File path issue');
-          throw new Error('Storage path not found');
-        case 'storage/bucket-not-found':
-          console.error('🪣 BUCKET ERROR: Storage bucket not found');
-          throw new Error('Firebase Storage bucket not found. Check your Firebase configuration.');
-        case 'storage/project-not-found':
-          console.error('📋 PROJECT ERROR: Firebase project not found');
-          throw new Error('Firebase project not found. Check your Firebase configuration.');
-        case 'storage/quota-exceeded':
-          console.error('💾 QUOTA ERROR: Storage quota exceeded');
-          throw new Error('Storage quota exceeded. Contact administrator.');
-        case 'storage/unauthenticated':
-          console.error('🔐 AUTH ERROR: User not authenticated');
-          throw new Error('User not authenticated. Please log in and try again.');
-        case 'storage/retry-limit-exceeded':
-          console.error('🔄 RETRY ERROR: Too many attempts');
-          throw new Error('Upload failed after multiple attempts. Try again later.');
-        default:
-          console.error('❓ UNHANDLED ERROR CODE:', error.code);
-          throw new Error(`Upload failed: ${error.message} (Code: ${error.code})`);
+      console.log('✅ File provided:', imageFile.name, 'Size:', imageFile.size, 'Type:', imageFile.type);
+
+      // Check file size (5MB limit)
+      if (imageFile.size > 5 * 1024 * 1024) {
+        throw new Error('Image size must be less than 5MB');
       }
-    } else {
-      // Generic errors
-      throw new Error(`Upload failed: ${error.message}`);
+      console.log('✅ File size OK');
+
+      // Check file type
+      if (!imageFile.type.startsWith('image/')) {
+        throw new Error('File must be an image');
+      }
+      console.log('✅ File type OK');
+
+      console.log('🔍 Step 2: Checking Firebase Storage...');
+      console.log('Storage instance:', storage);
+      if (!storage) {
+        throw new Error('Firebase Storage not initialized');
+      }
+      console.log('✅ Firebase Storage initialized');
+
+      console.log('🔍 Step 3: Creating storage reference...');
+      const timestamp = Date.now();
+      const cleanFileName = imageFile.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+      const fileName = `service_${timestamp}_${cleanFileName}`;
+      const storagePath = `services/${fileName}`;
+      
+      console.log('📁 Storage path:', storagePath);
+      
+      const imageRef = ref(storage, storagePath);
+      console.log('✅ Storage reference created:', imageRef);
+
+      console.log('🔍 Step 4: Starting upload...');
+      console.log('📤 Uploading to Firebase Storage...');
+      
+      const metadata = {
+        contentType: imageFile.type,
+        customMetadata: {
+          uploadedBy: 'admin',
+          uploadedAt: new Date().toISOString(),
+          originalName: imageFile.name
+        }
+      };
+      
+      const snapshot = await uploadBytes(imageRef, imageFile, metadata);
+      console.log('✅ Upload completed successfully!');
+      console.log('📋 Upload snapshot:', snapshot);
+      
+      console.log('🔍 Step 5: Getting download URL...');
+      const downloadURL = await getDownloadURL(snapshot.ref);
+      console.log('✅ Download URL obtained:', downloadURL);
+      
+      return downloadURL;
+      
+    } catch (error) {
+      console.error('❌ Upload failed:', error.message);
+      console.error('🔧 Full error details:', error);
+      
+      if (error.code) {
+        switch (error.code) {
+          case 'storage/unauthorized':
+            throw new Error('Upload failed: You do not have permission to upload files. Please check Firebase Storage security rules.');
+          case 'storage/canceled':
+            throw new Error('Upload was cancelled');
+          case 'storage/unknown':
+            throw new Error('Upload failed due to unknown error. Check your internet connection and try again.');
+          case 'storage/invalid-format':
+            throw new Error('Invalid file format');
+          case 'storage/object-not-found':
+            throw new Error('Storage path not found');
+          case 'storage/bucket-not-found':
+            throw new Error('Firebase Storage bucket not found. Check your Firebase configuration.');
+          case 'storage/project-not-found':
+            throw new Error('Firebase project not found. Check your Firebase configuration.');
+          case 'storage/quota-exceeded':
+            throw new Error('Storage quota exceeded. Contact administrator.');
+          case 'storage/unauthenticated':
+            throw new Error('User not authenticated. Please log in and try again.');
+          case 'storage/retry-limit-exceeded':
+            throw new Error('Upload failed after multiple attempts. Try again later.');
+          default:
+            throw new Error(`Upload failed: ${error.message} (Code: ${error.code})`);
+        }
+      } else {
+        throw new Error(`Upload failed: ${error.message}`);
+      }
     }
-  }
-};
+  };
 
   // Delete image from Firebase Storage
   const deleteServiceImage = async (imageUrl) => {
@@ -309,7 +291,7 @@ const uploadServiceImage = async (imageFile) => {
       // Extract the path from the URL
       const urlParts = imageUrl.split('/');
       const fileName = urlParts[urlParts.length - 1].split('?')[0];
-      const imagePath = `localImage/${decodeURIComponent(fileName)}`;
+      const imagePath = `services/${decodeURIComponent(fileName)}`;
       
       const imageRef = ref(storage, imagePath);
       await deleteObject(imageRef);
@@ -319,9 +301,8 @@ const uploadServiceImage = async (imageFile) => {
     }
   };
 
-  // Load services when component mounts - Fix function name
+  // Load services when component mounts
   const loadServices = () => {
-    // This function can be used to manually load services if needed
     console.log('Loading services...');
   };
 
@@ -564,50 +545,74 @@ const uploadServiceImage = async (imageFile) => {
     }
   };
 
+  // UPDATED: Fetch services with correct database structure
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, "services"), (querySnapshot) => {
-      const servicesData = querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        name: doc.data().name || '',
-        description: doc.data().description || '',
-        price: doc.data().price || 0,
-        imageUrl: doc.data().imageUrl || ''
-      }));
+      const servicesData = querySnapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          name: data.name || '',
+          description: data.description || '',
+          price: data.price || 0,
+          category: data.category || '',
+          icon: data.icon || '',
+          imageUrl: data.imageUrl || '',
+          localImage: data.localImage || '',
+          order: data.order || 0,
+          isActive: data.isActive !== undefined ? data.isActive : true
+        };
+      });
 
-      // Sort services by name for consistent display
-      servicesData.sort((a, b) => a.name.localeCompare(b.name));
+      // Sort services by order, then by name
+      servicesData.sort((a, b) => {
+        if (a.order !== b.order) return a.order - b.order;
+        return a.name.localeCompare(b.name);
+      });
       setServices(servicesData);
     }, error => console.error("Services snapshot error:", error));
 
     return () => unsubscribe();
   }, []);
 
-  // Function to add a new service to Firebase
-  const addService = async (name, description, price, imageUrl = '') => {
+  // UPDATED: Function to add a new service to Firebase with correct structure
+  const addService = async (serviceData) => {
     try {
       await addDoc(collection(db, "services"), {
-        name: name.trim(),
-        description: description.trim(),
-        price: parseFloat(price) || 0,
-        imageUrl: imageUrl
+        name: serviceData.name.trim(),
+        description: serviceData.description.trim(),
+        price: parseFloat(serviceData.price) || 0,
+        category: serviceData.category.trim(),
+        icon: serviceData.icon.trim(),
+        imageUrl: serviceData.imageUrl || '',
+        localImage: serviceData.localImage || '',
+        order: parseInt(serviceData.order) || 0,
+        isActive: serviceData.isActive !== undefined ? serviceData.isActive : true
       });
     } catch (error) {
       console.error("Error adding service:", error);
+      throw error;
     }
   };
 
-  // Function to update a service in Firebase
-  const updateService = async (serviceId, name, description, price, imageUrl = '') => {
+  // UPDATED: Function to update a service in Firebase with correct structure
+  const updateService = async (serviceId, serviceData) => {
     try {
       const serviceRef = doc(db, "services", serviceId);
       await updateDoc(serviceRef, {
-        name: name.trim(),
-        description: description.trim(),
-        price: parseFloat(price) || 0,
-        imageUrl: imageUrl
+        name: serviceData.name.trim(),
+        description: serviceData.description.trim(),
+        price: parseFloat(serviceData.price) || 0,
+        category: serviceData.category.trim(),
+        icon: serviceData.icon.trim(),
+        imageUrl: serviceData.imageUrl || '',
+        localImage: serviceData.localImage || '',
+        order: parseInt(serviceData.order) || 0,
+        isActive: serviceData.isActive !== undefined ? serviceData.isActive : true
       });
     } catch (error) {
       console.error("Error updating service:", error);
+      throw error;
     }
   };
 
@@ -1242,7 +1247,6 @@ const uploadServiceImage = async (imageFile) => {
     return patientName.includes(searchText) || services.includes(searchText);
   });
 
-
 const appointmentTotalPages = Math.max(
   1,
   Math.ceil(filteredAppointments.length / rowsPerPage)
@@ -1252,7 +1256,6 @@ const paginatedAppointments = filteredAppointments.slice(
   (appointmentCurrentPage - 1) * rowsPerPage,
   appointmentCurrentPage * rowsPerPage
 );
-
 
           // helper to style days with approved appts
           const tileContent = ({ date, view }) => {
@@ -1538,11 +1541,17 @@ case 'services': {
 
         <button
           onClick={() => {
-            // open modal with empty fields
-            setEditingService({ id: null, name: '', description: '', price: 0, imageUrl: '' });
-            setEditDescription('');
-            setEditPrice('');
-            setNewServiceName('');
+            // Reset form for new service
+            setEditingService({ id: null });
+            setServiceForm({
+              name: '',
+              description: '',
+              price: '',
+              category: 'restorative',
+              icon: 'ellipse-outline',
+              order: services.length + 1,
+              isActive: true
+            });
             setSelectedImage(null);
             setImagePreview('');
           }}
@@ -1559,7 +1568,7 @@ case 'services': {
         </button>
       </div>
 
-      {/* Services grid - keep your existing grid code here */}
+      {/* Services grid */}
       <div
         className="services-grid"
         style={{
@@ -1581,10 +1590,10 @@ case 'services': {
               display: 'flex',
               flexDirection: 'column',
               justifyContent: 'space-between',
-              minHeight: '250px',
+              minHeight: '350px',
+              opacity: service.isActive ? 1 : 0.6
             }}
           >
-            {/* Your existing service card content */}
             {/* Service Image */}
             <div style={{ marginBottom: '10px' }}>
               {service.imageUrl ? (
@@ -1599,6 +1608,24 @@ case 'services': {
                     backgroundColor: '#f5f5f5',
                   }}
                 />
+              ) : service.localImage ? (
+                <div
+                  style={{
+                    width: '100%',
+                    height: '120px',
+                    backgroundColor: '#f5f5f5',
+                    borderRadius: '6px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#666',
+                    fontSize: '12px',
+                    textAlign: 'center',
+                    padding: '10px'
+                  }}
+                >
+                  Local Image: {service.localImage}
+                </div>
               ) : (
                 <div
                   style={{
@@ -1618,22 +1645,63 @@ case 'services': {
               )}
             </div>
 
-            <div>
-              <h4 style={{ margin: '0 0 10px 0', color: '#333' }}>{service.name}</h4>
-              <p style={{ flexGrow: 1, marginBottom: '10px', color: '#666', lineHeight: '1.4' }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                <h4 style={{ margin: 0, color: '#333', flex: 1 }}>{service.name}</h4>
+                <span style={{
+                  fontSize: '12px',
+                  padding: '2px 6px',
+                  backgroundColor: service.isActive ? '#4caf50' : '#f44336',
+                  color: 'white',
+                  borderRadius: '10px'
+                }}>
+                  {service.isActive ? 'Active' : 'Inactive'}
+                </span>
+              </div>
+              
+              <div style={{ fontSize: '12px', color: '#666', marginBottom: '5px' }}>
+                Category: {service.category} | Order: {service.order}
+              </div>
+              
+              {service.icon && (
+                <div style={{ fontSize: '12px', color: '#666', marginBottom: '10px' }}>
+                  Icon: {service.icon}
+                </div>
+              )}
+              
+              <p style={{ 
+                flexGrow: 1, 
+                marginBottom: '10px', 
+                color: '#666', 
+                lineHeight: '1.4',
+                fontSize: '14px'
+              }}>
                 {service.description}
               </p>
-              <p style={{ fontWeight: 'bold', marginBottom: '15px', fontSize: '18px', color: '#4caf50' }}>
+              
+              <p style={{ 
+                fontWeight: 'bold', 
+                marginBottom: '15px', 
+                fontSize: '18px', 
+                color: '#4caf50' 
+              }}>
                 ₱{service.price.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
               </p>
             </div>
+            
             <div style={{ display: 'flex', gap: '8px' }}>
               <button
                 onClick={() => {
                   setEditingService(service);
-                  setEditDescription(service.description);
-                  setEditPrice(service.price.toString());
-                  setNewServiceName(service.name);
+                  setServiceForm({
+                    name: service.name,
+                    description: service.description,
+                    price: service.price.toString(),
+                    category: service.category,
+                    icon: service.icon,
+                    order: service.order,
+                    isActive: service.isActive
+                  });
                   setSelectedImage(null);
                   setImagePreview(service.imageUrl || '');
                 }}
@@ -1707,7 +1775,7 @@ case 'services': {
               background: 'white',
               padding: '25px',
               borderRadius: '8px',
-              minWidth: '400px',
+              minWidth: '500px',
               maxWidth: '90vw',
               maxHeight: '90vh',
               overflowY: 'auto',
@@ -1759,12 +1827,13 @@ case 'services': {
               </small>
             </div>
 
+            {/* Service Name */}
             <div style={{ marginBottom: '15px' }}>
-              <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Name</label>
+              <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Name *</label>
               <input
                 type="text"
-                value={newServiceName}
-                onChange={e => setNewServiceName(e.target.value)}
+                value={serviceForm.name}
+                onChange={e => setServiceForm({...serviceForm, name: e.target.value})}
                 placeholder="Enter service name"
                 style={{
                   width: '100%',
@@ -1776,11 +1845,12 @@ case 'services': {
               />
             </div>
 
+            {/* Description */}
             <div style={{ marginBottom: '15px' }}>
-              <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Description</label>
+              <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Description *</label>
               <textarea
-                value={editDescription}
-                onChange={e => setEditDescription(e.target.value)}
+                value={serviceForm.description}
+                onChange={e => setServiceForm({...serviceForm, description: e.target.value})}
                 rows={4}
                 placeholder="Describe the service"
                 style={{
@@ -1794,12 +1864,13 @@ case 'services': {
               />
             </div>
 
-            <div style={{ marginBottom: '20px' }}>
-              <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Price (₱)</label>
+            {/* Price */}
+            <div style={{ marginBottom: '15px' }}>
+              <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Price (₱) *</label>
               <input
                 type="number"
-                value={editPrice}
-                onChange={e => setEditPrice(e.target.value)}
+                value={serviceForm.price}
+                onChange={e => setServiceForm({...serviceForm, price: e.target.value})}
                 min="0"
                 step="0.01"
                 placeholder="0.00"
@@ -1811,6 +1882,85 @@ case 'services': {
                   fontSize: '14px'
                 }}
               />
+            </div>
+
+            {/* Category */}
+            <div style={{ marginBottom: '15px' }}>
+              <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Category</label>
+              <select
+                value={serviceForm.category}
+                onChange={e => setServiceForm({...serviceForm, category: e.target.value})}
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px',
+                  fontSize: '14px'
+                }}
+              >
+                <option value="restorative">Restorative</option>
+                <option value="preventive">Preventive</option>
+                <option value="cosmetic">Cosmetic</option>
+                <option value="orthodontic">Orthodontic</option>
+                <option value="surgical">Surgical</option>
+                <option value="periodontal">Periodontal</option>
+                <option value="endodontic">Endodontic</option>
+              </select>
+            </div>
+
+            {/* Icon */}
+            <div style={{ marginBottom: '15px' }}>
+              <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Icon</label>
+              <input
+                type="text"
+                value={serviceForm.icon}
+                onChange={e => setServiceForm({...serviceForm, icon: e.target.value})}
+                placeholder="e.g., ellipse-outline"
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px',
+                  fontSize: '14px'
+                }}
+              />
+            </div>
+
+            {/* Order and Active Status */}
+            <div style={{ display: 'flex', gap: '15px', marginBottom: '20px' }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Order</label>
+                <input
+                  type="number"
+                  value={serviceForm.order}
+                  onChange={e => setServiceForm({...serviceForm, order: parseInt(e.target.value) || 0})}
+                  min="0"
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    border: '1px solid #ddd',
+                    borderRadius: '4px',
+                    fontSize: '14px'
+                  }}
+                />
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Status</label>
+                <select
+                  value={serviceForm.isActive}
+                  onChange={e => setServiceForm({...serviceForm, isActive: e.target.value === 'true'})}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    border: '1px solid #ddd',
+                    borderRadius: '4px',
+                    fontSize: '14px'
+                  }}
+                >
+                  <option value={true}>Active</option>
+                  <option value={false}>Inactive</option>
+                </select>
+              </div>
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
@@ -1828,18 +1978,18 @@ case 'services': {
                 Cancel
               </button>
               
-              {/* THIS IS THE BUTTON WHERE YOU REPLACE THE onClick HANDLER */}
               <button
                 onClick={async () => {
-                  if (!newServiceName.trim()) {
+                  // Validation
+                  if (!serviceForm.name.trim()) {
                     alert('Please enter a service name');
                     return;
                   }
-                  if (!editDescription.trim()) {
+                  if (!serviceForm.description.trim()) {
                     alert('Please enter a description');
                     return;
                   }
-                  if (!editPrice || parseFloat(editPrice) < 0) {
+                  if (!serviceForm.price || parseFloat(serviceForm.price) < 0) {
                     alert('Please enter a valid price');
                     return;
                   }
@@ -1848,10 +1998,12 @@ case 'services': {
                   
                   try {
                     let imageUrl = '';
+                    let localImage = '';
                     
                     // If editing an existing service and no new image is selected, keep the old image
                     if (editingService.id && !selectedImage) {
                       imageUrl = editingService.imageUrl || '';
+                      localImage = editingService.localImage || '';
                     }
                     
                     // Upload new image if selected
@@ -1859,6 +2011,7 @@ case 'services': {
                       console.log('Starting image upload...', selectedImage.name);
                       try {
                         imageUrl = await uploadServiceImage(selectedImage);
+                        localImage = selectedImage.name; // Store original filename
                         console.log('Image uploaded successfully:', imageUrl);
                       } catch (uploadError) {
                         console.error('Image upload failed:', uploadError);
@@ -1867,17 +2020,30 @@ case 'services': {
                       }
                     }
 
+                    // Prepare service data with correct structure
+                    const serviceData = {
+                      name: serviceForm.name,
+                      description: serviceForm.description,
+                      price: serviceForm.price,
+                      category: serviceForm.category,
+                      icon: serviceForm.icon,
+                      imageUrl: imageUrl,
+                      localImage: localImage,
+                      order: serviceForm.order,
+                      isActive: serviceForm.isActive
+                    };
+
                     // Save service to database
                     try {
                       if (editingService.id) {
                         // Update existing service
                         console.log('Updating existing service...');
-                        await updateService(editingService.id, newServiceName, editDescription, editPrice, imageUrl);
+                        await updateService(editingService.id, serviceData);
                         console.log('Service updated successfully');
                       } else {
                         // Add new service
                         console.log('Adding new service...');
-                        await addService(newServiceName, editDescription, editPrice, imageUrl);
+                        await addService(serviceData);
                         console.log('Service added successfully');
                       }
                       
@@ -1885,9 +2051,15 @@ case 'services': {
                       setEditingService(null);
                       setSelectedImage(null);
                       setImagePreview('');
-                      setNewServiceName('');
-                      setEditDescription('');
-                      setEditPrice('');
+                      setServiceForm({
+                        name: '',
+                        description: '',
+                        price: '',
+                        category: 'restorative',
+                        icon: 'ellipse-outline',
+                        order: 0,
+                        isActive: true
+                      });
                       
                     } catch (dbError) {
                       console.error('Database operation failed:', dbError);
@@ -2326,7 +2498,6 @@ case 'services': {
                     </div>
                   )}
                 </div>
-                {/* *** FIXED: Removed an extra closing </div> tag that was here *** */}
               </div>
 
               {/* New chat dialog modal */}
@@ -2525,7 +2696,6 @@ case 'services': {
           </button>
         </nav>
         <div className="sidebar-footer">
-           {/* *** FIXED: Corrected the syntax of the logout button *** */}
           <button className="nav-item logout-btn" onClick={handleLogout}>
             <img src={logoutIcon} alt="Logout Icon" className="nav-icon" />
             <span className="logout-text">Log Out</span>
