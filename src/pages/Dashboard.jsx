@@ -634,15 +634,18 @@ const Dashboard = () => {
     }
   };
 
-  // Fetch appointments from Firebase (real-time)
+  // FIXED: Fetch appointments from Firebase (real-time) - Updated to handle all status values including "finished"
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, "appointments"), (querySnapshot) => {
       const data = querySnapshot.docs.map(d => {
         const appt = d.data() || {};
+        // FIXED: Don't override the status if it's already set correctly in the database
+        // Keep the original status from database, including "finished"
         return {
           id: d.id,
           ...appt,
-          status: appt.status === 'approved' || appt.status === 'declined' ? appt.status : 'pending'
+          // Only set to pending if status is undefined/null, otherwise keep the database value
+          status: appt.status || 'pending'
         };
       });
       setAppointments(data);
@@ -1238,24 +1241,25 @@ const Dashboard = () => {
         }
 
         case 'appointment': {
+          // FIXED: Updated filter to include "finished" status
           const filteredAppointments = appointments
-  .filter(appt => appointmentFilter === 'all' || appt.status === appointmentFilter)
-  .filter(appt => {
-    const searchText = appointmentSearch.toLowerCase();
-    const patientName = appt.userName.toLowerCase();
-    const services = getServicesString(appt).toLowerCase();
-    return patientName.includes(searchText) || services.includes(searchText);
-  });
+            .filter(appt => appointmentFilter === 'all' || appt.status === appointmentFilter)
+            .filter(appt => {
+              const searchText = appointmentSearch.toLowerCase();
+              const patientName = appt.userName.toLowerCase();
+              const services = getServicesString(appt).toLowerCase();
+              return patientName.includes(searchText) || services.includes(searchText);
+            });
 
-const appointmentTotalPages = Math.max(
-  1,
-  Math.ceil(filteredAppointments.length / rowsPerPage)
-);
+          const appointmentTotalPages = Math.max(
+            1,
+            Math.ceil(filteredAppointments.length / rowsPerPage)
+          );
 
-const paginatedAppointments = filteredAppointments.slice(
-  (appointmentCurrentPage - 1) * rowsPerPage,
-  appointmentCurrentPage * rowsPerPage
-);
+          const paginatedAppointments = filteredAppointments.slice(
+            (appointmentCurrentPage - 1) * rowsPerPage,
+            appointmentCurrentPage * rowsPerPage
+          );
 
           // helper to style days with approved appts
           const tileContent = ({ date, view }) => {
@@ -1271,25 +1275,25 @@ const paginatedAppointments = filteredAppointments.slice(
 
           return (
             <div className="dashboard-content">
-    <div className="controls-wrapper">
-  <div className="left-controls">
-   <input
-  type="text"
-  placeholder="Search patients..."
-  value={appointmentSearch}
-  onChange={(e) => setAppointmentSearch(e.target.value)}
-  className="search-input"
-/>
-<button
-  className="export-btn"
-  onClick={async () => await exportAppointmentsToPDF(filteredAppointments)}
->
-  Export PDF
-</button>
+              <div className="controls-wrapper">
+                <div className="left-controls">
+                  <input
+                    type="text"
+                    placeholder="Search patients..."
+                    value={appointmentSearch}
+                    onChange={(e) => setAppointmentSearch(e.target.value)}
+                    className="search-input"
+                  />
+                  <button
+                    className="export-btn"
+                    onClick={async () => await exportAppointmentsToPDF(filteredAppointments)}
+                  >
+                    Export PDF
+                  </button>
+                </div>
 
-  </div>
-
-  <div className="right-controls">
+                <div className="right-controls">
+                  {/* FIXED: Updated filter select to include "finished" option */}
                   <select
                     className="filter-select"
                     value={appointmentFilter}
@@ -1299,6 +1303,7 @@ const paginatedAppointments = filteredAppointments.slice(
                     <option value="pending">Pending</option>
                     <option value="approved">Approved</option>
                     <option value="declined">Declined</option>
+                    <option value="finished">Finished</option>
                   </select>
                   <button
                     className="calendar-btn"
@@ -1385,6 +1390,7 @@ const paginatedAppointments = filteredAppointments.slice(
                           </span>
                         </td>
                         <td>
+                          {/* FIXED: Only show action buttons for pending appointments, hide for finished */}
                           {appt.status === 'pending' && (
                             <>
                               <button
@@ -1404,6 +1410,12 @@ const paginatedAppointments = filteredAppointments.slice(
                                 Decline
                               </button>
                             </>
+                          )}
+                          {/* FIXED: Show no buttons for finished appointments */}
+                          {appt.status === 'finished' && (
+                            <span style={{ color: '#666', fontStyle: 'italic' }}>
+                              Completed
+                            </span>
                           )}
                         </td>
                       </tr>
