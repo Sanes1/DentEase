@@ -1450,7 +1450,7 @@ const [settingsForm, setSettingsForm] = useState({
           );
         }
 
-        case 'appointment': {
+         case 'appointment': {
           // FIXED: Updated filter to include "finished" status
           const filteredAppointments = appointments
             .filter(appt => appointmentFilter === 'all' || appt.status === appointmentFilter)
@@ -1978,6 +1978,82 @@ const [settingsForm, setSettingsForm] = useState({
                       Math.min(appointmentTotalPages, p + 1)
                     )
                   }
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          );
+        }
+
+        case 'patient': {
+          return (
+            <div className="dashboard-content">
+              <div className="patient-controls">
+                <input
+                  type="text"
+                  placeholder="Search patients..."
+                  value={patientSearch}
+                  onChange={(e) => setPatientSearch(e.target.value)}
+                  className="search-input"
+                />
+                <select
+                  className="filter-select"
+                  value={patientFilter}
+                  onChange={(e) => setPatientFilter(e.target.value)}
+                >
+                  <option value="all">All Patients</option>
+                  <option value="with">With Appointments</option>
+                  <option value="none">No Appointments</option>
+                </select>
+              </div>
+
+              <div className="patient-list">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Phone</th>
+                      <th>Address</th>
+                      <th>Last Appointment</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {paginatedPatients.map(patient => (
+                      <tr key={patient.id}>
+                        <td>{patient.userName}</td>
+                        <td>{formatPhoneNumber(patient.phoneNumber)}</td>
+                        <td>{patient.address}</td>
+                        <td>{patient.lastAppointment}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* pagination */}
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'center',
+                  marginTop: '15px',
+                  gap: '10px'
+                }}
+              >
+                <button
+                  className="calendar-btn"
+                  disabled={currentPage === 1}
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                >
+                  Prev
+                </button>
+                <span style={{ alignSelf: 'center' }}>
+                  Page {currentPage} of {totalPages}
+                </span>
+                <button
+                  className="calendar-btn"
+                  disabled={currentPage === totalPages}
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                 >
                   Next
                 </button>
