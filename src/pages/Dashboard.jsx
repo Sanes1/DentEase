@@ -1578,7 +1578,7 @@ const [settingsForm, setSettingsForm] = useState({
                   >
                     {/* Calendar Header */}
                     <div style={{
-                      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                      background: '#094685',
                       padding: '24px',
                       color: 'white'
                     }}>
@@ -1593,7 +1593,8 @@ const [settingsForm, setSettingsForm] = useState({
                           fontWeight: '600',
                           display: 'flex',
                           alignItems: 'center',
-                          gap: '12px'
+                          gap: '12px',
+                          color: 'white'
                         }}>
                           <span style={{ fontSize: '28px' }}>📅</span>
                           Appointments Calendar
@@ -1650,7 +1651,7 @@ const [settingsForm, setSettingsForm] = useState({
                             }
                             
                             .react-calendar__navigation button {
-                              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+                              background: #094685 !important;
                               color: white !important;
                               border: none !important;
                               border-radius: 8px !important;
@@ -1663,7 +1664,7 @@ const [settingsForm, setSettingsForm] = useState({
                             
                             .react-calendar__navigation button:hover {
                               transform: translateY(-1px) !important;
-                              box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3) !important;
+                              box-shadow: #094685 !important;
                             }
                             
                             .react-calendar__navigation button:disabled {
@@ -1713,14 +1714,14 @@ const [settingsForm, setSettingsForm] = useState({
                               background: #f0f9ff !important;
                               border-color: #0ea5e9 !important;
                               transform: translateY(-1px) !important;
-                              box-shadow: 0 2px 8px rgba(14, 165, 233, 0.15) !important;
+                              box-shadow: #094685 !important;
                             }
                             
                             .react-calendar__tile--active {
-                              background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%) !important;
+                              background: #094685 !important;
                               color: white !important;
                               border-color: #0284c7 !important;
-                              box-shadow: 0 4px 12px rgba(14, 165, 233, 0.3) !important;
+                              box-shadow: #094685 !important;
                             }
                             
                             .react-calendar__tile--now {
