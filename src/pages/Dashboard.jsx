@@ -1477,7 +1477,25 @@ const [settingsForm, setSettingsForm] = useState({
             const dateKey = formatDate(date);
             const appts = approvedAppointmentsByDate[dateKey] || [];
             return appts.length > 0 ? (
-              <div style={{ textAlign: 'center', color: 'white', background: '#4caf50', borderRadius: '50%', fontSize: '10px' }}>
+              <div style={{ 
+                position: 'absolute',
+                top: '4px',
+                right: '4px',
+                textAlign: 'center', 
+                color: 'white', 
+                background: 'linear-gradient(135deg, #10b981, #059669)', 
+                borderRadius: '50%', 
+                fontSize: '10px',
+                fontWeight: 'bold',
+                minWidth: '18px',
+                height: '18px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: '0 2px 4px rgba(16, 185, 129, 0.4)',
+                border: '2px solid white',
+                zIndex: 1
+              }}>
                 {appts.length}
               </div>
             ) : null;
@@ -1524,11 +1542,11 @@ const [settingsForm, setSettingsForm] = useState({
                 </div>
               </div>
 
-              {/* calendar modal */}
+              {/* ENHANCED CALENDAR MODAL */}
               {showCalendar && (
                 <div
                   style={{
-                    backgroundColor: 'rgba(0,0,0,0.5)',
+                    backgroundColor: 'rgba(0, 0, 0, 0.6)',
                     position: 'fixed',
                     top: 0,
                     left: 0,
@@ -1537,36 +1555,332 @@ const [settingsForm, setSettingsForm] = useState({
                     display: 'flex',
                     justifyContent: 'center',
                     alignItems: 'center',
-                    zIndex: 1000
+                    zIndex: 1000,
+                    backdropFilter: 'blur(4px)'
                   }}
                   onClick={() => setShowCalendar(false)}
                 >
                   <div
-                    style={{ backgroundColor: 'white', padding: '20px', borderRadius: '8px' }}
+                    style={{
+                      backgroundColor: 'white',
+                      padding: '0',
+                      borderRadius: '16px',
+                      boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 20px 25px -5px rgba(0, 0, 0, 0.1)',
+                      maxWidth: '500px',
+                      width: '90%',
+                      maxHeight: '90vh',
+                      overflow: 'auto',
+                      border: '1px solid #e5e7eb',
+                      display: 'flex',
+                      flexDirection: 'column'
+                    }}
                     onClick={(e) => e.stopPropagation()}
                   >
-                    <h3>Approved Appointments Calendar</h3>
-                    <ReactCalendar
-                      onChange={setCalendarDate}
-                      value={calendarDate}
-                      tileContent={tileContent}
-                    />
-                    <div style={{ marginTop: '10px' }}>
-                      <strong>{formatDate(calendarDate)}</strong>
-                      <ul style={{ marginTop: '5px' }}>
-                        {(approvedAppointmentsByDate[formatDate(calendarDate)] || []).map(appt => (
-                          <li key={appt.id}>
-                            {appt.userName} – {getServicesString(appt)}
-                          </li>
-                        ))}
-                      </ul>
+                    {/* Calendar Header */}
+                    <div style={{
+                      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                      padding: '24px',
+                      color: 'white'
+                    }}>
+                      <div style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center'
+                      }}>
+                        <h3 style={{
+                          margin: '0',
+                          fontSize: '24px',
+                          fontWeight: '600',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '12px'
+                        }}>
+                          <span style={{ fontSize: '28px' }}>📅</span>
+                          Appointments Calendar
+                        </h3>
+                        <button
+                          style={{
+                            background: 'rgba(255, 255, 255, 0.2)',
+                            border: 'none',
+                            color: 'white',
+                            width: '32px',
+                            height: '32px',
+                            borderRadius: '50%',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '18px',
+                            transition: 'background-color 0.2s'
+                          }}
+                          onClick={() => setShowCalendar(false)}
+                          onMouseEnter={(e) => e.target.style.backgroundColor = 'rgba(255, 255, 255, 0.3)'}
+                          onMouseLeave={(e) => e.target.style.backgroundColor = 'rgba(255, 255, 255, 0.2)'}
+                        >
+                          ✕
+                        </button>
+                      </div>
                     </div>
-                    <button
-                      style={{ marginTop: '10px' }}
-                      onClick={() => setShowCalendar(false)}
-                    >
-                      Close
-                    </button>
+
+                    {/* Calendar Content */}
+                    <div style={{ 
+                      padding: '24px',
+                      flex: '1',
+                      overflowY: 'auto'
+                    }}>
+                      <div style={{
+                        backgroundColor: '#f8fafc',
+                        borderRadius: '12px',
+                        padding: '16px',
+                        marginBottom: '10px'
+                      }}>
+                        <style>
+                          {`
+                            .react-calendar {
+                              width: 100% !important;
+                              background: transparent !important;
+                              border: none !important;
+                              font-family: inherit !important;
+                            }
+                            
+                            .react-calendar__navigation {
+                              display: flex !important;
+                              height: 48px !important;
+                              margin-bottom: 16px !important;
+                            }
+                            
+                            .react-calendar__navigation button {
+                              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+                              color: white !important;
+                              border: none !important;
+                              border-radius: 8px !important;
+                              font-weight: 600 !important;
+                              font-size: 14px !important;
+                              transition: all 0.2s ease !important;
+                              margin: 0 4px !important;
+                              min-width: 40px !important;
+                            }
+                            
+                            .react-calendar__navigation button:hover {
+                              transform: translateY(-1px) !important;
+                              box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3) !important;
+                            }
+                            
+                            .react-calendar__navigation button:disabled {
+                              background: #e5e7eb !important;
+                              color: #9ca3af !important;
+                              transform: none !important;
+                              box-shadow: none !important;
+                            }
+                            
+                            .react-calendar__month-view__weekdays {
+                              background: #f1f5f9 !important;
+                              border-radius: 8px !important;
+                              margin-bottom: 8px !important;
+                            }
+                            
+                            .react-calendar__month-view__weekdays__weekday {
+                              padding: 12px 8px !important;
+                              font-weight: 600 !important;
+                              font-size: 12px !important;
+                              color: #475569 !important;
+                              text-transform: uppercase !important;
+                              letter-spacing: 0.5px !important;
+                            }
+                            
+                            .react-calendar__month-view__days {
+                              display: grid !important;
+                              grid-template-columns: repeat(7, 1fr) !important;
+                              gap: 4px !important;
+                            }
+                            
+                            .react-calendar__tile {
+                              background: white !important;
+                              border: 1px solid #e2e8f0 !important;
+                              border-radius: 8px !important;
+                              height: 48px !important;
+                              font-weight: 500 !important;
+                              font-size: 14px !important;
+                              color: #374151 !important;
+                              display: flex !important;
+                              align-items: center !important;
+                              justify-content: center !important;
+                              position: relative !important;
+                              transition: all 0.2s ease !important;
+                            }
+                            
+                            .react-calendar__tile:hover {
+                              background: #f0f9ff !important;
+                              border-color: #0ea5e9 !important;
+                              transform: translateY(-1px) !important;
+                              box-shadow: 0 2px 8px rgba(14, 165, 233, 0.15) !important;
+                            }
+                            
+                            .react-calendar__tile--active {
+                              background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%) !important;
+                              color: white !important;
+                              border-color: #0284c7 !important;
+                              box-shadow: 0 4px 12px rgba(14, 165, 233, 0.3) !important;
+                            }
+                            
+                            .react-calendar__tile--now {
+                              background: #fef3c7 !important;
+                              border-color: #f59e0b !important;
+                              color: #92400e !important;
+                              font-weight: 600 !important;
+                            }
+                            
+                            .react-calendar__tile--now:hover {
+                              background: #fde68a !important;
+                            }
+                            
+                            .react-calendar__tile--neighboringMonth {
+                              color: #9ca3af !important;
+                              background: #f9fafb !important;
+                            }
+                            
+                            .react-calendar__tile--hasActive {
+                              background: #dbeafe !important;
+                              border-color: #3b82f6 !important;
+                            }
+                          `}
+                        </style>
+                        <ReactCalendar
+                          onChange={setCalendarDate}
+                          value={calendarDate}
+                          tileContent={tileContent}
+                        />
+                      </div>
+                      
+                      {/* APPOINTMENT DETAILS SECTION - FINAL DESIGN */}
+                      <div style={{ 
+                        marginTop: '20px',
+                        padding: '20px',
+                        backgroundColor: '#f0f9ff',
+                        borderRadius: '12px',
+                        border: '1px solid #e0f2fe'
+                      }}>
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '12px',
+                          marginBottom: '16px'
+                        }}>
+                          <div style={{
+                            width: '40px',
+                            height: '40px',
+                            backgroundColor: '#0ea5e9',
+                            borderRadius: '10px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: 'white',
+                            fontSize: '18px'
+                          }}>
+                            📆
+                          </div>
+                          <div>
+                            <h4 style={{
+                              margin: '0 0 4px 0',
+                              fontSize: '18px',
+                              fontWeight: '600',
+                              color: '#0c4a6e'
+                            }}>
+                              {formatDate(calendarDate)}
+                            </h4>
+                            <p style={{
+                              margin: '0',
+                              fontSize: '14px',
+                              color: '#64748b'
+                            }}>
+                              {(() => {
+                                const appointments = approvedAppointmentsByDate[formatDate(calendarDate)] || [];
+                                console.log('Appointments for', formatDate(calendarDate), ':', appointments);
+                                return `${appointments.length} appointment${appointments.length !== 1 ? 's' : ''} scheduled`;
+                              })()}
+                            </p>
+                          </div>
+                        </div>
+
+                        {(() => {
+                          const appointments = approvedAppointmentsByDate[formatDate(calendarDate)] || [];
+                          
+                          if (appointments.length > 0) {
+                            return (
+                              <div style={{ marginTop: '16px' }}>
+                                <div style={{
+                                  fontSize: '14px',
+                                  fontWeight: '500',
+                                  color: '#374151',
+                                  marginBottom: '12px'
+                                }}>
+                                  Scheduled Appointments:
+                                </div>
+                                <div style={{
+                                  maxHeight: '200px',
+                                  overflowY: 'auto'
+                                }}>
+                                  {appointments.map(appt => (
+                                    <div key={appt.id} style={{
+                                      backgroundColor: 'white',
+                                      borderRadius: '8px',
+                                      padding: '12px 16px',
+                                      marginBottom: '8px',
+                                      border: '1px solid #e2e8f0',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '12px'
+                                    }}>
+                                      <div style={{
+                                        width: '8px',
+                                        height: '8px',
+                                        backgroundColor: '#10b981',
+                                        borderRadius: '50%',
+                                        flexShrink: 0
+                                      }}></div>
+                                      <div style={{ flex: 1 }}>
+                                        <div style={{
+                                          fontWeight: '500',
+                                          color: '#1f2937',
+                                          fontSize: '14px'
+                                        }}>
+                                          {appt.userName}
+                                        </div>
+                                        <div style={{
+                                          fontSize: '13px',
+                                          color: '#6b7280',
+                                          marginTop: '2px'
+                                        }}>
+                                          {getServicesString(appt)}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          } else {
+                            return (
+                              <div style={{
+                                textAlign: 'center',
+                                padding: '20px',
+                                color: '#6b7280',
+                                fontSize: '14px'
+                              }}>
+                                <div style={{
+                                  fontSize: '32px',
+                                  marginBottom: '8px',
+                                  opacity: 0.5
+                                }}>
+                                  📅
+                                </div>
+                                No appointments scheduled for this date
+                              </div>
+                            );
+                          }
+                        })()}
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
@@ -1663,82 +1977,6 @@ const [settingsForm, setSettingsForm] = useState({
                       Math.min(appointmentTotalPages, p + 1)
                     )
                   }
-                >
-                  Next
-                </button>
-              </div>
-            </div>
-          );
-        }
-
-        case 'patient': {
-          return (
-            <div className="dashboard-content">
-              <div className="patient-controls">
-                <input
-                  type="text"
-                  placeholder="Search patients..."
-                  value={patientSearch}
-                  onChange={(e) => setPatientSearch(e.target.value)}
-                  className="search-input"
-                />
-                <select
-                  className="filter-select"
-                  value={patientFilter}
-                  onChange={(e) => setPatientFilter(e.target.value)}
-                >
-                  <option value="all">All Patients</option>
-                  <option value="with">With Appointments</option>
-                  <option value="none">No Appointments</option>
-                </select>
-              </div>
-
-              <div className="patient-list">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Name</th>
-                      <th>Phone</th>
-                      <th>Address</th>
-                      <th>Last Appointment</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {paginatedPatients.map(patient => (
-                      <tr key={patient.id}>
-                        <td>{patient.userName}</td>
-                        <td>{formatPhoneNumber(patient.phoneNumber)}</td>
-                        <td>{patient.address}</td>
-                        <td>{patient.lastAppointment}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* pagination */}
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'center',
-                  marginTop: '15px',
-                  gap: '10px'
-                }}
-              >
-                <button
-                  className="calendar-btn"
-                  disabled={currentPage === 1}
-                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                >
-                  Prev
-                </button>
-                <span style={{ alignSelf: 'center' }}>
-                  Page {currentPage} of {totalPages}
-                </span>
-                <button
-                  className="calendar-btn"
-                  disabled={currentPage === totalPages}
-                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                 >
                   Next
                 </button>
