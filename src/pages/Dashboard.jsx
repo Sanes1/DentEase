@@ -72,6 +72,49 @@ const Dashboard = () => {
   const [showCalendar, setShowCalendar] = useState(false);
   const [calendarDate, setCalendarDate] = useState(new Date());
 
+  //Feedback states
+  const [showReplyFor, setShowReplyFor] = useState(new Set());
+  const [feedbackCurrentPage, setFeedbackCurrentPage] = useState(1);
+  const [feedbacks, setFeedbacks] = useState([]);
+  const [ratingStats, setRatingStats] = useState({
+  total: 0,
+  average: 0,
+  counts: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
+});
+
+useEffect(() => {
+  const fetchFeedbacks = async () => {
+    try {
+      const qSnap = await getDocs(collection(db, 'surveys'));
+      const items = qSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+      // Only completed surveys
+      const completed = items.filter(i => i.surveyStage === 'completed');
+
+      // Compute stats
+      const counts = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+      let totalRating = 0;
+
+      completed.forEach(item => {
+        const rating = item.overallSatisfaction || 0;
+        counts[rating] = (counts[rating] || 0) + 1;
+        totalRating += rating;
+      });
+
+      const total = completed.length;
+      const average = total > 0 ? totalRating / total : 0;
+
+      setFeedbacks(completed);
+      setRatingStats({ total, average, counts });
+    } catch (err) {
+      console.error('Error fetching surveys:', err);
+    }
+  };
+
+  fetchFeedbacks();
+}, []);
+
+
   // Message states - Updated for real messenger with Firebase
   const [chatRooms, setChatRooms] = useState([]);
   const [selectedChatRoom, setSelectedChatRoom] = useState(null);
@@ -883,179 +926,184 @@ const Dashboard = () => {
     try {
       switch (activeTab) {
         case 'dashboard': {
-          // existing stats
-          const todayAppointments = appointments.filter(appt =>
-            (appt.appointmentDate || appt.date) &&
-            new Date(appt.appointmentDate || appt.date).toDateString() === todayStr &&
-            appt.status === 'approved'
-          );
-          const cancelledAppointments = appointments.filter(appt => appt.status === 'declined');
-          const pendingAppointments = appointments.filter(appt => appt.status === 'pending');
+  // existing stats
+  const todayAppointments = appointments.filter(appt =>
+    (appt.appointmentDate || appt.date) &&
+    new Date(appt.appointmentDate || appt.date).toDateString() === todayStr &&
+    appt.status === 'approved'
+  );
+  const cancelledAppointments = appointments.filter(appt => appt.status === 'declined');
+  const pendingAppointments = appointments.filter(appt => appt.status === 'pending');
 
-          // filter upcoming appointments
-          const filteredUpcoming = appointments
-            .filter(appt => {
-              if (appt.status !== 'approved') return false;
-              const ad = appt.appointmentDate || appt.date;
-              if (!ad) return false;
-              const apptDate = new Date(ad);
-              if (isNaN(apptDate)) return false;
-              if (upcomingFilter === 'Today') return apptDate.toDateString() === todayStr;
-              if (upcomingFilter === 'This Week') {
-                const weekStart = new Date(today);
-                weekStart.setDate(today.getDate() - today.getDay());
-                weekStart.setHours(0, 0, 0, 0);
-                const weekEnd = new Date(weekStart);
-                weekEnd.setDate(weekStart.getDate() + 6);
-                weekEnd.setHours(23, 59, 59, 999);
-                return apptDate >= weekStart && apptDate <= weekEnd;
-              }
-              return true;
-            })
-            .sort((a, b) => new Date(a.appointmentDate || a.date) - new Date(b.appointmentDate || b.date));
+  // filter upcoming appointments
+  const filteredUpcoming = appointments
+    .filter(appt => {
+      if (appt.status !== 'approved') return false;
+      const ad = appt.appointmentDate || appt.date;
+      if (!ad) return false;
+      const apptDate = new Date(ad);
+      if (isNaN(apptDate)) return false;
+      if (upcomingFilter === 'Today') return apptDate.toDateString() === todayStr;
+      if (upcomingFilter === 'This Week') {
+        const weekStart = new Date(today);
+        weekStart.setDate(today.getDate() - today.getDay());
+        weekStart.setHours(0, 0, 0, 0);
+        const weekEnd = new Date(weekStart);
+        weekEnd.setDate(weekStart.getDate() + 6);
+        weekEnd.setHours(23, 59, 59, 999);
+        return apptDate >= weekStart && apptDate <= weekEnd;
+      }
+      return true;
+    })
+    .sort((a, b) => new Date(a.appointmentDate || a.date) - new Date(b.appointmentDate || b.date));
 
-          // Top Services data (same logic as analytics)
-          const serviceCount = {};
-          appointments.forEach(a => {
-            const services = Array.isArray(a.services) ? a.services : a.services ? [a.services] : [];
-            services.forEach(s => { if (s) serviceCount[s] = (serviceCount[s] || 0) + 1; });
-          });
-          const pieData = Object.entries(serviceCount)
-            .map(([name, value]) => ({ name, value }))
-            .sort((a, b) => b.value - a.value)
-            .slice(0, 5);
+  // Top Services data (same logic as analytics)
+  const serviceCount = {};
+  appointments.forEach(a => {
+    const services = Array.isArray(a.services) ? a.services : a.services ? [a.services] : [];
+    services.forEach(s => { if (s) serviceCount[s] = (serviceCount[s] || 0) + 1; });
+  });
+  const pieData = Object.entries(serviceCount)
+    .map(([name, value]) => ({ name, value }))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 5);
 
-          const pieColors = ['#4caf50', '#ff9800', '#f44336', '#2196f3', '#9c27b0'];
+  const pieColors = ['#4caf50', '#ff9800', '#f44336', '#2196f3', '#9c27b0'];
 
-          return (
-            <div className="dashboard-content">
-              {/* stat cards */}
-              <div className="stats-grid">
-                <div className="stat-card">
-                  <p className="stat-number">{todayAppointments.length}</p>
-                  <div className="stat-label">
-                    <img src={appointmentIcon} alt="Appointments Icon" className="stat-icon" />
-                    <span>Appointments Today</span>
-                  </div>
-                </div>
-                <div className="stat-card">
-                  <p className="stat-number">{cancelledAppointments.length}</p>
-                  <div className="stat-label">
-                    <img src={feedbackIcon} alt="Cancelled Icon" className="stat-icon" />
-                    <span>Cancelled Appointments</span>
-                  </div>
-                </div>
-                <div className="stat-card">
-                  <p className="stat-number">{pendingAppointments.length}</p>
-                  <div className="stat-label">
-                    <img src={settingsIcon} alt="Pending Icon" className="stat-icon" />
-                    <span>Pending Approval</span>
-                  </div>
-                </div>
-                <div className="stat-card">
-                  <p className="stat-number">4.8⭐</p>
-                  <div className="stat-label">
-                    <img src={analyticsIcon} alt="Rating Icon" className="stat-icon" />
-                    <span>Rating</span>
-                  </div>
-                </div>
-              </div>
+  // Format rating display - use the same ratingStats from feedback
+  const displayRating = ratingStats.total > 0 
+    ? `${ratingStats.average.toFixed(1)}⭐` 
+    : 'No ratings';
 
-              {/* two charts side by side */}
-              <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
-                {/* Number of Appointments */}
-                <div className="analytics-card" style={{ flex: 1, minWidth: '300px' }}>
-                  <div className="card-header">
-                    <h3>Number of Appointments</h3>
-                    <select className="filter-select" value={selectedFilter} onChange={handleFilterChange}>
-                      <option>Today</option>
-                      <option>This Week</option>
-                      <option>This Month</option>
-                      <option>This Year</option>
-                    </select>
-                  </div>
-                  <div className="chart-container" style={{ height: 250 }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={analyticsData}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="month" />
-                        <YAxis />
-                        <Tooltip />
-                        <Legend />
-                        <Bar dataKey="appointments" fill="#4caf50" />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
+  return (
+    <div className="dashboard-content">
+      {/* stat cards */}
+      <div className="stats-grid">
+        <div className="stat-card">
+          <p className="stat-number">{todayAppointments.length}</p>
+          <div className="stat-label">
+            <img src={appointmentIcon} alt="Appointments Icon" className="stat-icon" />
+            <span>Appointments Today</span>
+          </div>
+        </div>
+        <div className="stat-card">
+          <p className="stat-number">{cancelledAppointments.length}</p>
+          <div className="stat-label">
+            <img src={feedbackIcon} alt="Cancelled Icon" className="stat-icon" />
+            <span>Cancelled Appointments</span>
+          </div>
+        </div>
+        <div className="stat-card">
+          <p className="stat-number">{pendingAppointments.length}</p>
+          <div className="stat-label">
+            <img src={settingsIcon} alt="Pending Icon" className="stat-icon" />
+            <span>Pending Approval</span>
+          </div>
+        </div>
+        <div className="stat-card">
+          <p className="stat-number">{displayRating}</p>
+          <div className="stat-label">
+            <img src={analyticsIcon} alt="Rating Icon" className="stat-icon" />
+            <span>Average Rating</span>
+          </div>
+        </div>
+      </div>
 
-                {/* Top Services */}
-                <div className="analytics-card" style={{ flex: 1, minWidth: '300px' }}>
-                  <div className="card-header">
-                    <h3>Top Services</h3>
-                  </div>
-                  <div className="chart-container" style={{ height: 250 }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie
-                          data={pieData}
-                          dataKey="value"
-                          nameKey="name"
-                          cx="50%"
-                          cy="50%"
-                          outerRadius={80}
-                          fill="#8884d8"
-                          label
-                        >
-                          {pieData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={pieColors[index % pieColors.length]} />
-                          ))}
-                        </Pie>
-                        <Tooltip />
-                        <Legend layout="horizontal" verticalAlign="bottom" align="center" />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-              </div>
+      {/* two charts side by side */}
+      <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
+        {/* Number of Appointments */}
+        <div className="analytics-card" style={{ flex: 1, minWidth: '300px' }}>
+          <div className="card-header">
+            <h3>Number of Appointments</h3>
+            <select className="filter-select" value={selectedFilter} onChange={handleFilterChange}>
+              <option>Today</option>
+              <option>This Week</option>
+              <option>This Month</option>
+              <option>This Year</option>
+            </select>
+          </div>
+          <div className="chart-container" style={{ height: 250 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={analyticsData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="month" />
+                <YAxis />
+                <Tooltip />
+                <Legend />
+                <Bar dataKey="appointments" fill="#4caf50" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
 
-              {/* Upcoming Appointments table */}
-              <div className="appointments-card">
-                <div className="card-header">
-                  <h3>Upcoming Appointments</h3>
-                  <select
-                    className="filter-select"
-                    value={upcomingFilter}
-                    onChange={(e) => setUpcomingFilter(e.target.value)}
-                  >
-                    <option>All</option>
-                    <option>Today</option>
-                    <option>This Week</option>
-                  </select>
-                </div>
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Patient Name</th>
-                      <th>Service</th>
-                      <th>Date</th>
-                      <th>Time</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredUpcoming.map(appt => (
-                      <tr key={appt.id}>
-                        <td>{appt.userName}</td>
-                        <td>{getServicesString(appt)}</td>
-                        <td>{formatDate(appt.appointmentDate || appt.date)}</td>
-                        <td>{appt.time || '-'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          );
-        }
+        {/* Top Services */}
+        <div className="analytics-card" style={{ flex: 1, minWidth: '300px' }}>
+          <div className="card-header">
+            <h3>Top Services</h3>
+          </div>
+          <div className="chart-container" style={{ height: 250 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={pieData}
+                  dataKey="value"
+                  nameKey="name"
+                  cx="50%"
+                  cy="50%"
+                  outerRadius={80}
+                  fill="#8884d8"
+                  label
+                >
+                  {pieData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={pieColors[index % pieColors.length]} />
+                  ))}
+                </Pie>
+                <Tooltip />
+                <Legend layout="horizontal" verticalAlign="bottom" align="center" />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
+
+      {/* Upcoming Appointments table */}
+      <div className="appointments-card">
+        <div className="card-header">
+          <h3>Upcoming Appointments</h3>
+          <select
+            className="filter-select"
+            value={upcomingFilter}
+            onChange={(e) => setUpcomingFilter(e.target.value)}
+          >
+            <option>All</option>
+            <option>Today</option>
+            <option>This Week</option>
+          </select>
+        </div>
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Patient Name</th>
+              <th>Service</th>
+              <th>Date</th>
+              <th>Time</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredUpcoming.map(appt => (
+              <tr key={appt.id}>
+                <td>{appt.userName}</td>
+                <td>{getServicesString(appt)}</td>
+                <td>{formatDate(appt.appointmentDate || appt.date)}</td>
+                <td>{appt.time || '-'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
 
         case 'analytics': {
           const serviceCount = {};
@@ -2627,15 +2675,296 @@ case 'services': {
           );
         }
 
-        case 'feedback': {
+ case 'feedback': {
+  // Pagination setup
+  const feedbackRowsPerPage = 5;
+  const feedbackTotalPages = Math.max(1, Math.ceil(feedbacks.length / feedbackRowsPerPage));
+  
+  // Paginated feedbacks
+  const paginatedFeedbacks = feedbacks.slice(
+    (feedbackCurrentPage - 1) * feedbackRowsPerPage,
+    feedbackCurrentPage * feedbackRowsPerPage
+  );
+
+  return (
+    <div className="feedback-container">
+      {/* Top row */}
+      <div className="feedback-top">
+        {/* Total Reviews */}
+        <div className="feedback-stat">
+          <div className="feedback-stat-number">{ratingStats.total}</div>
+          <div className="feedback-stat-label">Total Reviews</div>
+        </div>
+
+        {/* Average Rating */}
+        <div className="feedback-average">
+          <div className="feedback-average-number">
+            {ratingStats.average.toFixed(1)}
+          </div>
+          <div className="feedback-stars">
+            {'⭐'.repeat(Math.floor(ratingStats.average)) +
+              (ratingStats.average % 1 >= 0.5 ? '⭐' : '')}
+          </div>
+          <div className="feedback-stat-label">Average Rating</div>
+        </div>
+
+        {/* Rating breakdown */}
+        <div className="rating-breakdown">
+          {[5, 4, 3, 2, 1].map(star => (
+            <div key={star} className="rating-row">
+              <span className="rating-number">{star}</span>
+              <div className="bar-bg">
+                <div
+                  className="bar-fill"
+                  style={{
+                    width: `${
+                      ratingStats.total
+                        ? (ratingStats.counts[star] / ratingStats.total) * 100
+                        : 0
+                    }%`,
+                  }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Feedback list */}
+      <div className="feedback-list">
+        {paginatedFeedbacks.map((fb, idx) => {
+          const actualIdx = (feedbackCurrentPage - 1) * feedbackRowsPerPage + idx;
+          
           return (
-            <div className="dashboard-content">
-              <h3>Feedback</h3>
-              <p>Here you can view patient feedback and ratings.</p>
+            <div key={fb.id || actualIdx} className="feedback-card">
+              <div className="feedback-card-header">
+                <strong>{fb.userEmail}</strong>
+                <span>
+                  {fb.completedAt?.seconds
+                    ? new Date(fb.completedAt.seconds * 1000).toLocaleDateString()
+                    : ''}
+                </span>
+              </div>
+
+              <div className="feedback-stars">
+                {'⭐'.repeat(fb.overallSatisfaction)}
+              </div>
+
+              <div className="feedback-message">{fb.openFeedback}</div>
+
+              {/* Show all admin replies if they exist */}
+              {fb.adminReplies && fb.adminReplies.length > 0 && (
+                <div className="admin-replies" style={{ marginTop: '15px' }}>
+                  {fb.adminReplies.map((reply, replyIdx) => (
+                    <div key={replyIdx} className="admin-reply" style={{
+                      backgroundColor: '#f0f8ff',
+                      padding: '10px',
+                      borderRadius: '6px',
+                      marginBottom: '10px',
+                      borderLeft: '4px solid #094685'
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <div>
+                          <strong>Your reply:</strong> {reply.text}
+                        </div>
+                        <small style={{ color: '#666', fontSize: '12px' }}>
+                          {reply.replyAt?.seconds 
+                            ? new Date(reply.replyAt.seconds * 1000).toLocaleString()
+                            : reply.replyAt instanceof Date
+                            ? reply.replyAt.toLocaleString()
+                            : 'Just now'
+                          }
+                        </small>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Reply button - always show unless reply field is currently open */}
+              {!showReplyFor.has(fb.id) && (
+                <button
+                  className="reply-btn"
+                  onClick={() => {
+                    const newSet = new Set(showReplyFor);
+                    newSet.add(fb.id);
+                    setShowReplyFor(newSet);
+                  }}
+                  style={{
+                    marginTop: '10px',
+                    padding: '8px 16px',
+                    backgroundColor: '#094685',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  {fb.adminReplies && fb.adminReplies.length > 0 ? 'Reply Again' : 'Reply'}
+                </button>
+              )}
+
+              {/* Reply section - only show if reply button was clicked */}
+              {showReplyFor.has(fb.id) && (
+                <div className="reply-section" style={{ marginTop: '15px' }}>
+                  <textarea
+                    className="reply-input"
+                    placeholder="Write a reply..."
+                    value={fb.replyText || ''}
+                    onChange={e => {
+                      const val = e.target.value;
+                      setFeedbacks(prev =>
+                        prev.map((item, i) =>
+                          i === actualIdx ? { ...item, replyText: val } : item
+                        )
+                      );
+                    }}
+                    style={{
+                      width: '100%',
+                      minHeight: '80px',
+                      padding: '10px',
+                      border: '1px solid #ddd',
+                      borderRadius: '4px',
+                      marginBottom: '10px',
+                      resize: 'vertical'
+                    }}
+                  />
+                  <div style={{ display: 'flex', gap: '10px' }}>
+                    <button
+                      className="reply-btn"
+                      onClick={async () => {
+                        const replyText = fb.replyText || '';
+                        if (!replyText.trim()) {
+                          alert('Please enter a reply message');
+                          return;
+                        }
+                        
+                        try {
+                          // Get existing replies or create empty array
+                          const existingReplies = fb.adminReplies || [];
+                          
+                          // Create new reply object with Firestore Timestamp
+                          const newReply = {
+                            text: replyText.trim(),
+                            replyAt: new Date() // Use regular Date object instead of serverTimestamp()
+                          };
+                          
+                          // Add new reply to the array
+                          const updatedReplies = [...existingReplies, newReply];
+                          
+                          // Update Firestore
+                          await updateDoc(doc(db, 'surveys', fb.id), {
+                            adminReplies: updatedReplies,
+                            // Keep the old adminReply field for backward compatibility
+                            adminReply: replyText.trim(),
+                            replyAt: serverTimestamp(), // This is outside the array, so it's allowed
+                          });
+                          
+                          // Update local state
+                          setFeedbacks(prev =>
+                            prev.map((item, i) =>
+                              i === actualIdx
+                                ? { 
+                                    ...item, 
+                                    adminReplies: updatedReplies,
+                                    adminReply: replyText.trim(), 
+                                    replyText: '' 
+                                  }
+                                : item
+                            )
+                          );
+                          
+                          // Hide reply field
+                          const newSet = new Set(showReplyFor);
+                          newSet.delete(fb.id);
+                          setShowReplyFor(newSet);
+                          
+                        } catch (error) {
+                          console.error('Error sending reply:', error);
+                          alert(`Failed to send reply: ${error.message}`);
+                        }
+                      }}
+                      style={{
+                        padding: '8px 16px',
+                        backgroundColor: '#4caf50',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Send Reply
+                    </button>
+                    
+                    <button
+                      onClick={() => {
+                        // Cancel reply and hide field
+                        const newSet = new Set(showReplyFor);
+                        newSet.delete(fb.id);
+                        setShowReplyFor(newSet);
+                        
+                        // Clear any text that was typed
+                        setFeedbacks(prev =>
+                          prev.map((item, i) =>
+                            i === actualIdx ? { ...item, replyText: '' } : item
+                          )
+                        );
+                      }}
+                      style={{
+                        padding: '8px 16px',
+                        backgroundColor: '#9e9e9e',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           );
-        }
+        })}
+      </div>
 
+      {/* Pagination */}
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'center',
+          marginTop: '15px',
+          gap: '10px'
+        }}
+      >
+        <button
+          className="calendar-btn"
+          disabled={feedbackCurrentPage === 1}
+          onClick={() =>
+            setFeedbackCurrentPage((p) => Math.max(1, p - 1))
+          }
+        >
+          Prev
+        </button>
+        <span style={{ alignSelf: 'center' }}>
+          Page {feedbackCurrentPage} of {feedbackTotalPages}
+        </span>
+        <button
+          className="calendar-btn"
+          disabled={feedbackCurrentPage === feedbackTotalPages}
+          onClick={() =>
+            setFeedbackCurrentPage((p) =>
+              Math.min(feedbackTotalPages, p + 1)
+            )
+          }
+        >
+          Next
+        </button>
+      </div>
+    </div>
+  );
+}
         case 'settings': {
           return (
             <div className="dashboard-content">
