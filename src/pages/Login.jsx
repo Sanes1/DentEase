@@ -1,9 +1,12 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom'; // ✅ import for navigation
+import { useNavigate } from 'react-router-dom';
 import './Login.css';
+// Import Firestore functions and the database instance
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "../firebase"; // Make sure this path is correct
 
 const Login = () => {
-  const navigate = useNavigate(); // ✅ hook for redirect
+  const navigate = useNavigate();
 
   const [formData, setFormData] = useState({
     email: '',
@@ -12,6 +15,7 @@ const Login = () => {
   const [errors, setErrors] = useState({});
   const [isLoading, setIsLoading] = useState(false);
 
+  // ✅ SIMPLIFIED VALIDATION LOGIC
   const validateField = (name, value) => {
     let error = '';
 
@@ -24,14 +28,10 @@ const Login = () => {
     }
 
     if (name === 'password') {
+      // The only pre-submission check is to see if the field is empty.
+      // The "correctness" of the password will be checked after submitting.
       if (!value) {
         error = 'Password is required';
-      } else if (value.length < 6) {
-        error = 'Password must be at least 6 characters';
-      } else if (!/[A-Z]/.test(value)) {
-        error = 'Password must contain at least 1 uppercase letter';
-      } else if (!/[0-9]/.test(value)) {
-        error = 'Password must contain at least 1 number';
       }
     }
 
@@ -55,10 +55,12 @@ const Login = () => {
 
     setErrors(prev => ({
       ...prev,
-      [name]: validateField(name, newValue)
+      [name]: validateField(name, newValue),
+      form: '' // Clear general form error when user types again
     }));
   };
 
+  // This function now only checks for empty fields before submission
   const validateForm = () => {
     const newErrors = {};
     Object.keys(formData).forEach(field => {
@@ -68,7 +70,8 @@ const Login = () => {
     return newErrors;
   };
 
-  const handleSubmit = (e) => {
+  // ✅ UPDATED handleSubmit with more specific error messages
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
     const formErrors = validateForm();
@@ -78,16 +81,43 @@ const Login = () => {
     }
 
     setIsLoading(true);
+    setErrors({});
 
-    // simulate API call
-    setTimeout(() => {
+    try {
+      const adminDocRef = doc(db, "admin_acc", "admin");
+      const adminDocSnap = await getDoc(adminDocRef);
+
+      if (!adminDocSnap.exists()) {
+        console.error("Admin document not found in Firestore.");
+        setErrors({ form: "Admin account is not configured correctly." });
+        setIsLoading(false);
+        return;
+      }
+
+      const adminData = adminDocSnap.data();
+      const storedEmail = (adminData.email || '').trim();
+      const storedPassword = (adminData.password || '').trim();
+
+      const enteredEmail = formData.email.trim();
+      const enteredPassword = formData.password.trim();
+
+      // Check email first, then password, to provide better feedback
+      if (storedEmail !== enteredEmail) {
+        setErrors({ form: "No account found with that email address." });
+      } else if (storedPassword !== enteredPassword) {
+        setErrors({ form: "The password you entered is incorrect." });
+      } else {
+        // Success!
+        console.log("Login successful!");
+        navigate('/dashboard');
+      }
+
+    } catch (error) {
+      console.error("Firebase login error:", error);
+      setErrors({ form: "An error occurred. Please check your connection and try again." });
+    } finally {
       setIsLoading(false);
-
-      console.log('Login attempt with:', formData);
-
-      // ✅ Redirect to dashboard after success
-      navigate('/dashboard');
-    }, 1500);
+    }
   };
 
   return (
@@ -100,7 +130,6 @@ const Login = () => {
             <h1>DentEase</h1>
             <p>Admin Portal</p>
           </div>
-
           <div className="welcome-text">
             <h2>Welcome Back</h2>
             <p>Sign in to access your admin dashboard</p>
@@ -134,8 +163,16 @@ const Login = () => {
                 disabled={isLoading}
                 required
               />
+              {/* This error will now only show "Password is required" */}
               {errors.password && <div className="error-message">{errors.password}</div>}
             </div>
+
+            {/* This is where "incorrect password" or other server errors will appear */}
+            {errors.form && (
+              <div className="error-message" style={{ textAlign: 'center', marginBottom: '15px' }}>
+                {errors.form}
+              </div>
+            )}
 
             <button
               type="submit"

@@ -13,7 +13,8 @@ import {
   where,
   getDocs,
   deleteDoc,
-  setDoc
+  setDoc,
+  getDoc
 } from "firebase/firestore";
 import { db } from "../firebase";
 import {
@@ -114,24 +115,26 @@ useEffect(() => {
   fetchFeedbacks();
 }, []);
 
-//settings states
+// --- SETTINGS STATES ---
 const [settingsForm, setSettingsForm] = useState({
-    // Email change form
-    currentPasswordForEmail: '',
-    newEmail: '',
-    
     // Password change form
     currentPassword: '',
     newPassword: '',
     confirmPassword: '',
   });
   
-  const [showEmailForm, setShowEmailForm] = useState(false);
   const [showPasswordForm, setShowPasswordForm] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
-  const [currentUserEmail, setCurrentUserEmail] = useState('admin@fanodental.com'); // You can get this from your auth system
+  const [currentUserEmail, setCurrentUserEmail] = useState('admin@fanodental.com'); // This is static now
 
-  // Password validation function
+  // New state for real-time password validation
+  const [passwordRequirements, setPasswordRequirements] = useState({
+    length: false,
+    uppercase: false,
+    number: false,
+  });
+
+  // Password validation function (for final check)
   const validatePassword = (password) => {
     if (password.length < 12) {
       return 'Password must be at least 12 characters long';
@@ -145,70 +148,20 @@ const [settingsForm, setSettingsForm] = useState({
     return null;
   };
 
-  // Handle email change
-  const handleEmailChange = async () => {
-    if (!settingsForm.currentPasswordForEmail) {
-      alert('Please enter your current password');
-      return;
-    }
-    
-    if (!settingsForm.newEmail) {
-      alert('Please enter a new email address');
-      return;
-    }
-    
-    // Basic email validation
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(settingsForm.newEmail)) {
-      alert('Please enter a valid email address');
-      return;
-    }
-    
-    if (settingsForm.newEmail === currentUserEmail) {
-      alert('New email must be different from current email');
-      return;
-    }
+  // Real-time password checker
+  const handleNewPasswordChange = (e) => {
+    const newPassword = e.target.value;
+    setSettingsForm(prev => ({ ...prev, newPassword }));
 
-    setIsUpdating(true);
-    
-    try {
-      // Here you would integrate with your authentication system
-      // For now, this is a placeholder for the actual implementation
-      
-      // Example with Firebase Auth:
-      // const user = auth.currentUser;
-      // const credential = EmailAuthProvider.credential(currentUserEmail, settingsForm.currentPasswordForEmail);
-      // await reauthenticateWithCredential(user, credential);
-      // await updateEmail(user, settingsForm.newEmail);
-      
-      console.log('Email change request:', {
-        currentPassword: settingsForm.currentPasswordForEmail,
-        newEmail: settingsForm.newEmail
-      });
-      
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      alert('Email updated successfully! Please check your new email for verification.');
-      
-      // Reset form
-      setSettingsForm(prev => ({
-        ...prev,
-        currentPasswordForEmail: '',
-        newEmail: ''
-      }));
-      setShowEmailForm(false);
-      setCurrentUserEmail(settingsForm.newEmail);
-      
-    } catch (error) {
-      console.error('Email change error:', error);
-      alert('Failed to update email. Please check your password and try again.');
-    } finally {
-      setIsUpdating(false);
-    }
+    // Update requirements state
+    setPasswordRequirements({
+      length: newPassword.length >= 12,
+      uppercase: /[A-Z]/.test(newPassword),
+      number: /\d/.test(newPassword),
+    });
   };
 
-  // Handle password change
+  // Handle password change submission
   const handlePasswordChange = async () => {
     if (!settingsForm.currentPassword) {
       alert('Please enter your current password');
@@ -220,7 +173,7 @@ const [settingsForm, setSettingsForm] = useState({
       return;
     }
     
-    // Validate new password
+    // Final validation before submitting
     const passwordError = validatePassword(settingsForm.newPassword);
     if (passwordError) {
       alert(passwordError);
@@ -228,49 +181,54 @@ const [settingsForm, setSettingsForm] = useState({
     }
     
     if (settingsForm.newPassword !== settingsForm.confirmPassword) {
-      alert('New passwords do not match');
+      alert('The new passwords do not match. Please re-enter them.');
       return;
     }
     
     if (settingsForm.currentPassword === settingsForm.newPassword) {
-      alert('New password must be different from current password');
+      alert('The new password must be different from the current password.');
       return;
     }
 
     setIsUpdating(true);
     
     try {
-      // Here you would integrate with your authentication system
-      // For now, this is a placeholder for the actual implementation
+      const adminRef = doc(db, "admin_acc", "admin");
+      const adminSnap = await getDoc(adminRef);
+
+      if (!adminSnap.exists()) {
+        throw new Error("Admin account document could not be found.");
+      }
+
+      const adminData = adminSnap.data();
+      const storedPassword = (adminData.password || '').trim();
+      const currentPasswordInput = settingsForm.currentPassword.trim();
+
+      if (storedPassword !== currentPasswordInput) {
+        alert("The current password you entered is incorrect. Please try again.");
+        setIsUpdating(false);
+        return;
+      }
       
-      // Example with Firebase Auth:
-      // const user = auth.currentUser;
-      // const credential = EmailAuthProvider.credential(user.email, settingsForm.currentPassword);
-      // await reauthenticateWithCredential(user, credential);
-      // await updatePassword(user, settingsForm.newPassword);
-      
-      console.log('Password change request:', {
-        currentPassword: settingsForm.currentPassword,
-        newPassword: settingsForm.newPassword
+      // Update the password in Firestore
+      await updateDoc(adminRef, {
+        password: settingsForm.newPassword.trim()
       });
-      
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
       
       alert('Password updated successfully!');
       
-      // Reset form
-      setSettingsForm(prev => ({
-        ...prev,
+      // Reset form and hide it
+      setSettingsForm({
         currentPassword: '',
         newPassword: '',
         confirmPassword: ''
-      }));
+      });
       setShowPasswordForm(false);
+      setPasswordRequirements({ length: false, uppercase: false, number: false }); // Reset checker
       
     } catch (error) {
       console.error('Password change error:', error);
-      alert('Failed to update password. Please check your current password and try again.');
+      alert(`Failed to update password. An error occurred: ${error.message}`);
     } finally {
       setIsUpdating(false);
     }
@@ -878,6 +836,7 @@ const [settingsForm, setSettingsForm] = useState({
           const validDates = userAppointments
             .map(a => new Date(a.appointmentDate || a.date || null))
             .filter(d => d instanceof Date && !isNaN(d));
+          // ✅✅✅ THIS IS THE CORRECTED LINE ✅✅✅
           if (validDates.length) lastAppointmentDate = validDates.sort((a,b) => b - a)[0];
         }
 
@@ -3443,280 +3402,188 @@ case 'services': {
   );
 }
         case 'settings': {
+          // A helper component for displaying a password requirement
+          const Requirement = ({ label, met }) => (
+            <li style={{ color: met ? '#4caf50' : '#f44336', marginBottom: '4px' }}>
+              {met ? '✓' : '✗'} {label}
+            </li>
+          );
+
           return (
-    <div className="dashboard-content">
-      <div style={{ maxWidth: '600px', margin: '0 auto' }}>
-        <h3 style={{ marginBottom: '30px' }}>Account Settings</h3>
+            <div className="dashboard-content">
+              <div style={{ maxWidth: '600px', margin: '0 auto' }}>
+                <h3 style={{ marginBottom: '30px' }}>Account Settings</h3>
+        
+                {/* Current Account Info */}
+                <div style={{
+                  backgroundColor: '#f8f9fa',
+                  padding: '20px',
+                  borderRadius: '8px',
+                  marginBottom: '30px'
+                }}>
+                  <h4 style={{ margin: '0 0 15px 0', color: '#333' }}>Account Information</h4>
+                  <div style={{ marginBottom: '10px' }}>
+                    <strong>Admin Email:</strong> {currentUserEmail}
+                  </div>
+                  <div style={{ color: '#666', fontSize: '14px' }}>
+                    You can manage your account password below.
+                  </div>
+                </div>
+        
+                {/* Password Change Section */}
+                <div style={{
+                  border: '1px solid #ddd',
+                  borderRadius: '8px',
+                  marginBottom: '20px',
+                  overflow: 'hidden'
+                }}>
+                  <div style={{
+                    padding: '15px 20px',
+                    backgroundColor: '#f8f9fa',
+                    borderBottom: '1px solid #ddd',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center'
+                  }}>
+                    <h4 style={{ margin: 0 }}>Change Password</h4>
+                    <button
+                      onClick={() => {
+                        setShowPasswordForm(!showPasswordForm);
+                        if (showPasswordForm) {
+                           // If closing the form, reset everything
+                          setSettingsForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+                          setPasswordRequirements({ length: false, uppercase: false, number: false });
+                        }
+                      }}
+                      style={{
+                        padding: '8px 16px',
+                        backgroundColor: showPasswordForm ? '#9e9e9e' : '#094685',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {showPasswordForm ? 'Cancel' : 'Change Password'}
+                    </button>
+                  </div>
+                  
+                  {showPasswordForm && (
+                    <div style={{ padding: '20px' }}>
+                      <div style={{ marginBottom: '15px' }}>
+                        <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
+                          Current Password *
+                        </label>
+                        <input
+                          type="password"
+                          value={settingsForm.currentPassword}
+                          onChange={(e) => setSettingsForm(prev => ({
+                            ...prev,
+                            currentPassword: e.target.value
+                          }))}
+                          placeholder="Enter your current password"
+                          style={{
+                            width: '100%',
+                            padding: '10px',
+                            border: '1px solid #ddd',
+                            borderRadius: '4px',
+                            fontSize: '14px'
+                          }}
+                        />
+                      </div>
+                      
+                      <div style={{ marginBottom: '15px' }}>
+                        <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
+                          New Password *
+                        </label>
+                        <input
+                          type="password"
+                          value={settingsForm.newPassword}
+                          onChange={handleNewPasswordChange} // Use the new handler for real-time validation
+                          placeholder="Enter a new, strong password"
+                          style={{
+                            width: '100%',
+                            padding: '10px',
+                            border: '1px solid #ddd',
+                            borderRadius: '4px',
+                            fontSize: '14px'
+                          }}
+                        />
+                      </div>
 
-        {/* Current Account Info */}
-        <div style={{
-          backgroundColor: '#f8f9fa',
-          padding: '20px',
-          borderRadius: '8px',
-          marginBottom: '30px'
-        }}>
-          <h4 style={{ margin: '0 0 15px 0', color: '#333' }}>Current Account Information</h4>
-          <div style={{ marginBottom: '10px' }}>
-            <strong>Email:</strong> {currentUserEmail}
-          </div>
-          <div style={{ color: '#666', fontSize: '14px' }}>
-            Last updated: {new Date().toLocaleDateString()}
-          </div>
-        </div>
-
-        {/* Email Change Section */}
-        <div style={{
-          border: '1px solid #ddd',
-          borderRadius: '8px',
-          marginBottom: '20px',
-          overflow: 'hidden'
-        }}>
-          <div style={{
-            padding: '15px 20px',
-            backgroundColor: '#f8f9fa',
-            borderBottom: '1px solid #ddd',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center'
-          }}>
-            <h4 style={{ margin: 0 }}>Change Email Address</h4>
-            <button
-              onClick={() => {
-                setShowEmailForm(!showEmailForm);
-                if (!showEmailForm) {
-                  setSettingsForm(prev => ({
-                    ...prev,
-                    currentPasswordForEmail: '',
-                    newEmail: ''
-                  }));
-                }
-              }}
-              style={{
-                padding: '8px 16px',
-                backgroundColor: showEmailForm ? '#9e9e9e' : '#094685',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer'
-              }}
-            >
-              {showEmailForm ? 'Cancel' : 'Change Email'}
-            </button>
-          </div>
-          
-          {showEmailForm && (
-            <div style={{ padding: '20px' }}>
-              <div style={{ marginBottom: '15px' }}>
-                <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
-                  Current Password *
-                </label>
-                <input
-                  type="password"
-                  value={settingsForm.currentPasswordForEmail}
-                  onChange={(e) => setSettingsForm(prev => ({
-                    ...prev,
-                    currentPasswordForEmail: e.target.value
-                  }))}
-                  placeholder="Enter your current password"
-                  style={{
-                    width: '100%',
-                    padding: '10px',
-                    border: '1px solid #ddd',
-                    borderRadius: '4px',
-                    fontSize: '14px'
-                  }}
-                />
+                      {/* Real-time Password Requirements Checklist */}
+                      <div style={{ 
+                          padding: '10px', 
+                          backgroundColor: '#f8f9fa', 
+                          borderRadius: '4px', 
+                          marginBottom: '20px',
+                          border: '1px solid #eee'
+                      }}>
+                        <ul style={{ listStyleType: 'none', margin: 0, padding: 0, fontSize: '13px' }}>
+                          <Requirement label="At least 12 characters long" met={passwordRequirements.length} />
+                          <Requirement label="Contains at least one uppercase letter (A-Z)" met={passwordRequirements.uppercase} />
+                          <Requirement label="Contains at least one number (0-9)" met={passwordRequirements.number} />
+                        </ul>
+                      </div>
+                      
+                      <div style={{ marginBottom: '20px' }}>
+                        <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
+                          Confirm New Password *
+                        </label>
+                        <input
+                          type="password"
+                          value={settingsForm.confirmPassword}
+                          onChange={(e) => setSettingsForm(prev => ({
+                            ...prev,
+                            confirmPassword: e.target.value
+                          }))}
+                          placeholder="Confirm your new password"
+                          style={{
+                            width: '100%',
+                            padding: '10px',
+                            border: '1px solid #ddd',
+                            borderRadius: '4px',
+                            fontSize: '14px'
+                          }}
+                        />
+                      </div>
+                      
+                      <button
+                        onClick={handlePasswordChange}
+                        disabled={isUpdating}
+                        style={{
+                          padding: '10px 20px',
+                          backgroundColor: isUpdating ? '#ccc' : '#4caf50',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: isUpdating ? 'not-allowed' : 'pointer'
+                        }}
+                      >
+                        {isUpdating ? 'Updating...' : 'Update Password'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+        
+                {/* Additional Settings Info */}
+                <div style={{
+                  backgroundColor: '#e3f2fd',
+                  padding: '15px',
+                  borderRadius: '8px',
+                  marginTop: '30px'
+                }}>
+                  <h4 style={{ margin: '0 0 10px 0', color: '#1976d2' }}>Security Information</h4>
+                  <ul style={{ margin: 0, paddingLeft: '20px', color: '#333' }}>
+                    <li>Always use a strong, unique password for your account.</li>
+                    <li>For production systems, it is highly recommended to use a dedicated authentication service like Firebase Authentication instead of storing passwords in the database.</li>
+                    <li>Contact support if you have trouble accessing your account.</li>
+                  </ul>
+                </div>
               </div>
-              
-              <div style={{ marginBottom: '20px' }}>
-                <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
-                  New Email Address *
-                </label>
-                <input
-                  type="email"
-                  value={settingsForm.newEmail}
-                  onChange={(e) => setSettingsForm(prev => ({
-                    ...prev,
-                    newEmail: e.target.value
-                  }))}
-                  placeholder="Enter new email address"
-                  style={{
-                    width: '100%',
-                    padding: '10px',
-                    border: '1px solid #ddd',
-                    borderRadius: '4px',
-                    fontSize: '14px'
-                  }}
-                />
-              </div>
-              
-              <button
-                onClick={handleEmailChange}
-                disabled={isUpdating}
-                style={{
-                  padding: '10px 20px',
-                  backgroundColor: isUpdating ? '#ccc' : '#4caf50',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: isUpdating ? 'not-allowed' : 'pointer'
-                }}
-              >
-                {isUpdating ? 'Updating...' : 'Update Email'}
-              </button>
             </div>
-          )}
-        </div>
-
-        {/* Password Change Section */}
-        <div style={{
-          border: '1px solid #ddd',
-          borderRadius: '8px',
-          marginBottom: '20px',
-          overflow: 'hidden'
-        }}>
-          <div style={{
-            padding: '15px 20px',
-            backgroundColor: '#f8f9fa',
-            borderBottom: '1px solid #ddd',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center'
-          }}>
-            <h4 style={{ margin: 0 }}>Change Password</h4>
-            <button
-              onClick={() => {
-                setShowPasswordForm(!showPasswordForm);
-                if (!showPasswordForm) {
-                  setSettingsForm(prev => ({
-                    ...prev,
-                    currentPassword: '',
-                    newPassword: '',
-                    confirmPassword: ''
-                  }));
-                }
-              }}
-              style={{
-                padding: '8px 16px',
-                backgroundColor: showPasswordForm ? '#9e9e9e' : '#094685',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer'
-              }}
-            >
-              {showPasswordForm ? 'Cancel' : 'Change Password'}
-            </button>
-          </div>
-          
-          {showPasswordForm && (
-            <div style={{ padding: '20px' }}>
-              <div style={{ marginBottom: '15px' }}>
-                <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
-                  Current Password *
-                </label>
-                <input
-                  type="password"
-                  value={settingsForm.currentPassword}
-                  onChange={(e) => setSettingsForm(prev => ({
-                    ...prev,
-                    currentPassword: e.target.value
-                  }))}
-                  placeholder="Enter your current password"
-                  style={{
-                    width: '100%',
-                    padding: '10px',
-                    border: '1px solid #ddd',
-                    borderRadius: '4px',
-                    fontSize: '14px'
-                  }}
-                />
-              </div>
-              
-              <div style={{ marginBottom: '15px' }}>
-                <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
-                  New Password *
-                </label>
-                <input
-                  type="password"
-                  value={settingsForm.newPassword}
-                  onChange={(e) => setSettingsForm(prev => ({
-                    ...prev,
-                    newPassword: e.target.value
-                  }))}
-                  placeholder="Enter new password"
-                  style={{
-                    width: '100%',
-                    padding: '10px',
-                    border: '1px solid #ddd',
-                    borderRadius: '4px',
-                    fontSize: '14px'
-                  }}
-                />
-                <small style={{ color: '#666', fontSize: '12px', marginTop: '5px', display: 'block' }}>
-                  Password must be at least 12 characters, contain 1 uppercase letter and 1 number
-                </small>
-              </div>
-              
-              <div style={{ marginBottom: '20px' }}>
-                <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
-                  Confirm New Password *
-                </label>
-                <input
-                  type="password"
-                  value={settingsForm.confirmPassword}
-                  onChange={(e) => setSettingsForm(prev => ({
-                    ...prev,
-                    confirmPassword: e.target.value
-                  }))}
-                  placeholder="Confirm new password"
-                  style={{
-                    width: '100%',
-                    padding: '10px',
-                    border: '1px solid #ddd',
-                    borderRadius: '4px',
-                    fontSize: '14px'
-                  }}
-                />
-              </div>
-              
-              <button
-                onClick={handlePasswordChange}
-                disabled={isUpdating}
-                style={{
-                  padding: '10px 20px',
-                  backgroundColor: isUpdating ? '#ccc' : '#4caf50',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: isUpdating ? 'not-allowed' : 'pointer'
-                }}
-              >
-                {isUpdating ? 'Updating...' : 'Update Password'}
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* Additional Settings Info */}
-        <div style={{
-          backgroundColor: '#e3f2fd',
-          padding: '15px',
-          borderRadius: '8px',
-          marginTop: '30px'
-        }}>
-          <h4 style={{ margin: '0 0 10px 0', color: '#1976d2' }}>Security Information</h4>
-          <ul style={{ margin: 0, paddingLeft: '20px', color: '#333' }}>
-            <li>Always use a strong, unique password for your account</li>
-            <li>Email changes require verification before taking effect</li>
-            <li>You will be logged out after changing your password</li>
-            <li>Contact support if you have trouble accessing your account</li>
-          </ul>
-        </div>
-      </div>
-    </div>
-  );
-}
+          );
+        }
 
         default: {
           return (
