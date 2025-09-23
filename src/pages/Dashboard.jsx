@@ -59,9 +59,48 @@ import logoutIcon from '../assets/logout.png';
 import denteaseIcon from '../assets/dentease.png';
 import servicesIcon from '../assets/services.png';
 
+
+// Loading Spinner Component
+const LoadingSpinner = () => (
+  <div className="loading-overlay">
+    <style>{`
+      .loading-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(255, 255, 255, 0.8);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 10000;
+        backdrop-filter: blur(4px);
+      }
+
+      .spinner {
+        width: 50px;
+        height: 50px;
+        border: 5px solid #f3f3f3; /* Light grey */
+        border-top: 5px solid #094685; /* Blue from the app's theme */
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+      }
+
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+    `}</style>
+    <div className="spinner"></div>
+  </div>
+);
+
+
 const Dashboard = () => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [isLoading, setIsLoading] = useState(true); // For initial page load
   const [appointments, setAppointments] = useState([]);
   const [patients, setPatients] = useState([]);
   const [analyticsData, setAnalyticsData] = useState([]);
@@ -77,6 +116,7 @@ const Dashboard = () => {
   const [showReplyFor, setShowReplyFor] = useState(new Set());
   const [feedbackCurrentPage, setFeedbackCurrentPage] = useState(1);
   const [feedbacks, setFeedbacks] = useState([]);
+  const [isReplyingTo, setIsReplyingTo] = useState(null); // Tracks which feedback is being replied to
   const [ratingStats, setRatingStats] = useState({
   total: 0,
   average: 0,
@@ -240,6 +280,7 @@ const [settingsForm, setSettingsForm] = useState({
   const [selectedChatRoom, setSelectedChatRoom] = useState(null);
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
+  const [isSendingMessage, setIsSendingMessage] = useState(false);
   const [messageSearch, setMessageSearch] = useState('');
   const [isAdminOnline, setIsAdminOnline] = useState(true);
   const [adminLastSeen, setAdminLastSeen] = useState(new Date());
@@ -309,7 +350,6 @@ const [settingsForm, setSettingsForm] = useState({
     description: '',
     price: '',
     category: '',
-    icon: '',
     order: 0,
     isActive: true
   });
@@ -317,11 +357,23 @@ const [settingsForm, setSettingsForm] = useState({
   // Image upload states
   const [selectedImage, setSelectedImage] = useState(null);
   const [imagePreview, setImagePreview] = useState('');
-  const [uploadingImage, setUploadingImage] = useState(false);
+  const [isSavingService, setIsSavingService] = useState(false);
 
   // Add missing refs
   const messagesEndRef = useRef(null);
   const messageInputRef = useRef(null);
+
+  // Effect for initial loading screen
+  useEffect(() => {
+    // This effect runs once on component mount.
+    // The onSnapshot listeners will start fetching data in the background.
+    // We'll show the spinner for a short duration to ensure a smooth initial render.
+    const timer = setTimeout(() => {
+      setIsLoading(false);
+    }, 1500); // Adjust time as needed
+
+    return () => clearTimeout(timer); // Cleanup timer on unmount
+  }, []); // Empty dependency array ensures it runs only once
 
   // Handle image file selection
   const handleImageSelect = (e) => {
@@ -449,18 +501,16 @@ const [settingsForm, setSettingsForm] = useState({
   // Delete image from Firebase Storage
   const deleteServiceImage = async (imageUrl) => {
     if (!imageUrl) return;
-    
     try {
-      // Extract the path from the URL
-      const urlParts = imageUrl.split('/');
-      const fileName = urlParts[urlParts.length - 1].split('?')[0];
-      const imagePath = `services/${decodeURIComponent(fileName)}`;
-      
-      const imageRef = ref(storage, imagePath);
-      await deleteObject(imageRef);
+        // Use the full URL to create a reference directly - this is the robust way
+        const imageRef = ref(storage, imageUrl);
+        await deleteObject(imageRef);
     } catch (error) {
-      console.error('Error deleting image:', error);
-      // Don't throw error as service deletion should continue even if image deletion fails
+        // If the error is 'object-not-found', it's okay, maybe it was already deleted.
+        // For other errors, we should log them.
+        if (error.code !== 'storage/object-not-found') {
+            console.error('Error deleting image:', error);
+        }
     }
   };
 
@@ -492,6 +542,22 @@ const [settingsForm, setSettingsForm] = useState({
       const d = value.toDate ? value.toDate() : new Date(value);
       if (isNaN(d)) return String(value);
       return d.toLocaleDateString();
+    } catch {
+      return String(value);
+    }
+  };
+
+  const formatFullDate = (value) => {
+    if (!value) return '-';
+    try {
+      const d = value.toDate ? value.toDate() : new Date(value);
+      if (isNaN(d)) return String(value);
+      // Use options for "Month Day, Year" format
+      return d.toLocaleString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      });
     } catch {
       return String(value);
     }
@@ -644,8 +710,9 @@ const [settingsForm, setSettingsForm] = useState({
 
   // Function to send a message in the chat room - Updated to use correct Firebase path structure
   const sendMessage = async () => {
-    if (!newMessage.trim() || !selectedChatRoom) return;
+    if (!newMessage.trim() || !selectedChatRoom || isSendingMessage) return;
 
+    setIsSendingMessage(true);
     try {
       // Send message using correct path: chat_rooms/{doctor}/user_conversations/{userId}/messages
       const messagesRef = collection(db, "chat_rooms", currentDoctor, "user_conversations", selectedChatRoom.userId, "messages");
@@ -672,6 +739,8 @@ const [settingsForm, setSettingsForm] = useState({
     } catch (error) {
       console.error("Error sending message:", error);
       alert("Failed to send message");
+    } finally {
+        setIsSendingMessage(false);
     }
   };
 
@@ -717,9 +786,8 @@ const [settingsForm, setSettingsForm] = useState({
           id: doc.id,
           name: data.name || '',
           description: data.description || '',
-          price: data.price || 0,
+          price: String(data.price || '0'), // <-- FIX: Ensure price is always a string
           category: data.category || '',
-          icon: data.icon || '',
           imageUrl: data.imageUrl || '',
           localImage: data.localImage || '',
           order: data.order || 0,
@@ -744,9 +812,8 @@ const [settingsForm, setSettingsForm] = useState({
       await addDoc(collection(db, "services"), {
         name: serviceData.name.trim(),
         description: serviceData.description.trim(),
-        price: parseFloat(serviceData.price) || 0,
+        price: serviceData.price.trim(),
         category: serviceData.category.trim(),
-        icon: serviceData.icon.trim(),
         imageUrl: serviceData.imageUrl || '',
         localImage: serviceData.localImage || '',
         order: parseInt(serviceData.order) || 0,
@@ -765,9 +832,8 @@ const [settingsForm, setSettingsForm] = useState({
       await updateDoc(serviceRef, {
         name: serviceData.name.trim(),
         description: serviceData.description.trim(),
-        price: parseFloat(serviceData.price) || 0,
+        price: serviceData.price.trim(),
         category: serviceData.category.trim(),
-        icon: serviceData.icon.trim(),
         imageUrl: serviceData.imageUrl || '',
         localImage: serviceData.localImage || '',
         order: parseInt(serviceData.order) || 0,
@@ -818,7 +884,7 @@ const [settingsForm, setSettingsForm] = useState({
     return () => unsubscribe();
   }, [selectedFilter]);
 
-  // Fetch patients from Firebase (real-time)
+  // Fetch patients from Firebase (real-time) and combine with appointment data
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, "users"), (querySnapshot) => {
       const usersData = querySnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -836,8 +902,9 @@ const [settingsForm, setSettingsForm] = useState({
           const validDates = userAppointments
             .map(a => new Date(a.appointmentDate || a.date || null))
             .filter(d => d instanceof Date && !isNaN(d));
-          // ✅✅✅ THIS IS THE CORRECTED LINE ✅✅✅
-          if (validDates.length) lastAppointmentDate = validDates.sort((a,b) => b - a)[0];
+          if (validDates.length) {
+            lastAppointmentDate = validDates.sort((a, b) => b - a)[0];
+          }
         }
 
         return {
@@ -845,24 +912,26 @@ const [settingsForm, setSettingsForm] = useState({
           userName: user.name || user.fullName || user.userName || 'Unnamed',
           phoneNumber: user.phoneNumber || user.phone || user.contact || '',
           address: user.address || user.location || '',
-          lastAppointmentDate,
-          lastAppointment: lastAppointmentDate ? lastAppointmentDate.toLocaleDateString() : '-'
+          lastAppointmentDate, // Keep the date object for sorting
+          lastAppointment: lastAppointmentDate ? formatFullDate(lastAppointmentDate) : '-' // Use new formatting function
         };
       });
 
+      // Sort by the actual date object for accuracy
       usersWithLast.sort((a, b) => {
         if (a.lastAppointmentDate && b.lastAppointmentDate) return b.lastAppointmentDate - a.lastAppointmentDate;
         if (a.lastAppointmentDate) return -1;
         if (b.lastAppointmentDate) return 1;
-        return 0;
+        return a.userName.localeCompare(b.userName);
       });
 
       setPatients(usersWithLast);
-      setCurrentPage(1);
+      setCurrentPage(1); // Reset to first page on data refresh
     }, error => console.error("Patients snapshot error:", error));
 
     return () => unsubscribe();
-  }, [appointments]);
+  }, [appointments]); // This useEffect now correctly depends on appointments state
+
 
   // Fetch chat rooms from Firebase (real-time) - Updated for correct path structure
   useEffect(() => {
@@ -1001,6 +1070,11 @@ const [settingsForm, setSettingsForm] = useState({
     } catch (error) {
       console.error("Error updating status:", error);
     }
+  };
+
+  const handleUpcomingAppointmentClick = (appointment) => {
+    setActiveTab('appointment');
+    setAppointmentSearch(appointment.userName);
   };
 
   // Filter chat rooms based on search
@@ -1212,10 +1286,15 @@ const [settingsForm, setSettingsForm] = useState({
           </thead>
           <tbody>
             {filteredUpcoming.map(appt => (
-              <tr key={appt.id}>
+              <tr 
+                key={appt.id} 
+                onClick={() => handleUpcomingAppointmentClick(appt)}
+                style={{ cursor: 'pointer' }}
+                className="clickable-row"
+              >
                 <td>{appt.userName}</td>
                 <td>{getServicesString(appt)}</td>
-                <td>{formatDate(appt.appointmentDate || appt.date)}</td>
+                <td>{formatFullDate(appt.appointmentDate || appt.date)}</td>
                 <td>{appt.time || '-'}</td>
               </tr>
             ))}
@@ -2044,7 +2123,6 @@ case 'services': {
               description: '',
               price: '',
               category: 'restorative',
-              icon: 'ellipse-outline',
               order: services.length + 1,
               isActive: true
             });
@@ -2155,15 +2233,9 @@ case 'services': {
                 </span>
               </div>
               
-              <div style={{ fontSize: '12px', color: '#666', marginBottom: '5px' }}>
+              <div style={{ fontSize: '12px', color: '#666', marginBottom: '10px' }}>
                 Category: {service.category} | Order: {service.order}
               </div>
-              
-              {service.icon && (
-                <div style={{ fontSize: '12px', color: '#666', marginBottom: '10px' }}>
-                  Icon: {service.icon}
-                </div>
-              )}
               
               <p style={{ 
                 flexGrow: 1, 
@@ -2181,7 +2253,7 @@ case 'services': {
                 fontSize: '18px', 
                 color: '#4caf50' 
               }}>
-                ₱{service.price.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                ₱{service.price}
               </p>
             </div>
             
@@ -2192,9 +2264,8 @@ case 'services': {
                   setServiceForm({
                     name: service.name,
                     description: service.description,
-                    price: service.price.toString(),
+                    price: String(service.price), // <-- FIX: Ensure price is a string
                     category: service.category,
-                    icon: service.icon,
                     order: service.order,
                     isActive: service.isActive
                   });
@@ -2364,12 +2435,10 @@ case 'services': {
             <div style={{ marginBottom: '15px' }}>
               <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Price (₱) *</label>
               <input
-                type="number"
+                type="text"
                 value={serviceForm.price}
                 onChange={e => setServiceForm({...serviceForm, price: e.target.value})}
-                min="0"
-                step="0.01"
-                placeholder="0.00"
+                placeholder="e.g., 500 or 1000-3000"
                 style={{
                   width: '100%',
                   padding: '8px 12px',
@@ -2402,24 +2471,6 @@ case 'services': {
                 <option value="periodontal">Periodontal</option>
                 <option value="endodontic">Endodontic</option>
               </select>
-            </div>
-
-            {/* Icon */}
-            <div style={{ marginBottom: '15px' }}>
-              <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Icon</label>
-              <input
-                type="text"
-                value={serviceForm.icon}
-                onChange={e => setServiceForm({...serviceForm, icon: e.target.value})}
-                placeholder="e.g., ellipse-outline"
-                style={{
-                  width: '100%',
-                  padding: '8px 12px',
-                  border: '1px solid #ddd',
-                  borderRadius: '4px',
-                  fontSize: '14px'
-                }}
-              />
             </div>
 
             {/* Order and Active Status */}
@@ -2477,110 +2528,66 @@ case 'services': {
               <button
                 onClick={async () => {
                   // Validation
-                  if (!serviceForm.name.trim()) {
-                    alert('Please enter a service name');
+                  if (!serviceForm.name.trim() || !serviceForm.description.trim() || !String(serviceForm.price).trim()) { // <-- FIX: ensure price is string for trim
+                    alert('Please fill in all required fields (*)');
                     return;
                   }
-                  if (!serviceForm.description.trim()) {
-                    alert('Please enter a description');
-                    return;
-                  }
-                  if (!serviceForm.price || parseFloat(serviceForm.price) < 0) {
-                    alert('Please enter a valid price');
-                    return;
-                  }
-
-                  setUploadingImage(true);
+              
+                  setIsSavingService(true);
                   
                   try {
-                    let imageUrl = '';
-                    let localImage = '';
-                    
-                    // If editing an existing service and no new image is selected, keep the old image
-                    if (editingService.id && !selectedImage) {
-                      imageUrl = editingService.imageUrl || '';
-                      localImage = editingService.localImage || '';
-                    }
-                    
-                    // Upload new image if selected
-                    if (selectedImage) {
-                      console.log('Starting image upload...', selectedImage.name);
-                      try {
-                        imageUrl = await uploadServiceImage(selectedImage);
-                        localImage = selectedImage.name; // Store original filename
-                        console.log('Image uploaded successfully:', imageUrl);
-                      } catch (uploadError) {
-                        console.error('Image upload failed:', uploadError);
-                        alert(`Image upload failed: ${uploadError.message}`);
-                        return;
-                      }
-                    }
-
-                    // Prepare service data with correct structure
-                    const serviceData = {
-                      name: serviceForm.name,
-                      description: serviceForm.description,
-                      price: serviceForm.price,
-                      category: serviceForm.category,
-                      icon: serviceForm.icon,
-                      imageUrl: imageUrl,
-                      localImage: localImage,
-                      order: serviceForm.order,
-                      isActive: serviceForm.isActive
-                    };
-
-                    // Save service to database
-                    try {
-                      if (editingService.id) {
-                        // Update existing service
-                        console.log('Updating existing service...');
-                        await updateService(editingService.id, serviceData);
-                        console.log('Service updated successfully');
+                      const originalService = editingService.id ? services.find(s => s.id === editingService.id) : {};
+                      const dataToSave = { ...serviceForm };
+              
+                      if (selectedImage) {
+                          if (originalService?.imageUrl) {
+                              await deleteServiceImage(originalService.imageUrl);
+                          }
+                          const newImageUrl = await uploadServiceImage(selectedImage);
+                          dataToSave.imageUrl = newImageUrl;
+                          dataToSave.localImage = selectedImage.name;
                       } else {
-                        // Add new service
-                        console.log('Adding new service...');
-                        await addService(serviceData);
-                        console.log('Service added successfully');
+                          dataToSave.imageUrl = originalService?.imageUrl || '';
+                          dataToSave.localImage = originalService?.localImage || '';
                       }
-                      
-                      // Reset form and close modal
+              
+                      const finalServiceData = {
+                          name: dataToSave.name,
+                          description: dataToSave.description,
+                          price: dataToSave.price,
+                          category: dataToSave.category,
+                          imageUrl: dataToSave.imageUrl,
+                          localImage: dataToSave.localImage,
+                          order: dataToSave.order,
+                          isActive: dataToSave.isActive
+                      };
+              
+                      if (editingService.id) {
+                          await updateService(editingService.id, finalServiceData);
+                      } else {
+                          await addService(finalServiceData);
+                      }
+              
                       setEditingService(null);
-                      setSelectedImage(null);
-                      setImagePreview('');
-                      setServiceForm({
-                        name: '',
-                        description: '',
-                        price: '',
-                        category: 'restorative',
-                        icon: 'ellipse-outline',
-                        order: 0,
-                        isActive: true
-                      });
-                      
-                    } catch (dbError) {
-                      console.error('Database operation failed:', dbError);
-                      alert(`Failed to save service: ${dbError.message}`);
-                    }
-                    
                   } catch (error) {
-                    console.error('General error saving service:', error);
-                    alert(`Error saving service: ${error.message}`);
+                      alert(`Error saving service: ${error.message}`);
                   } finally {
-                    setUploadingImage(false);
+                      setIsSavingService(false);
                   }
                 }}
-                disabled={uploadingImage}
+              
+                disabled={isSavingService}
                 style={{
                   padding: '8px 16px',
-                  backgroundColor: uploadingImage ? '#ccc' : '#4caf50',
+                  backgroundColor: isSavingService ? '#ccc' : '#4caf50',
                   color: 'white',
                   border: 'none',
                   borderRadius: '4px',
-                  cursor: uploadingImage ? 'not-allowed' : 'pointer',
+                  cursor: isSavingService ? 'not-allowed' : 'pointer',
                 }}
               >
-                {uploadingImage 
-                  ? 'Uploading...' 
+                {isSavingService 
+                  ? 'Saving...' 
                   : `${editingService.id ? 'Update' : 'Add'} Service`
                 }
               </button>
@@ -2932,7 +2939,7 @@ case 'services': {
                             value={newMessage}
                             onChange={(e) => setNewMessage(e.target.value)}
                             onKeyPress={handleKeyPress}
-                            disabled={!isAdminOnline}
+                            disabled={!isAdminOnline || isSendingMessage}
                             style={{
                               flex: 1,
                               padding: '10px 15px',
@@ -2945,20 +2952,20 @@ case 'services': {
                           />
                           <button
                             onClick={sendMessage}
-                            disabled={!newMessage.trim() || !isAdminOnline}
+                            disabled={!newMessage.trim() || !isAdminOnline || isSendingMessage}
                             type="button"
                             style={{
-                              backgroundColor: (newMessage.trim() && isAdminOnline) ? '#4caf50' : '#ccc',
+                              backgroundColor: (newMessage.trim() && isAdminOnline && !isSendingMessage) ? '#4caf50' : '#ccc',
                               color: 'white',
                               border: 'none',
                               borderRadius: '50%',
                               width: '40px',
                               height: '40px',
-                              cursor: (newMessage.trim() && isAdminOnline) ? 'pointer' : 'not-allowed',
+                              cursor: (newMessage.trim() && isAdminOnline && !isSendingMessage) ? 'pointer' : 'not-allowed',
                               fontSize: '18px'
                             }}
                           >
-                            ➤
+                            {isSendingMessage ? '...' : '➤'}
                           </button>
                         </div>
                       </div>
@@ -3275,31 +3282,26 @@ case 'services': {
                           return;
                         }
                         
+                        setIsReplyingTo(fb.id);
                         try {
-                          // Get existing replies or create empty array
                           const existingReplies = fb.adminReplies || [];
                           
-                          // Create new reply object with Firestore Timestamp
                           const newReply = {
                             text: replyText.trim(),
-                            replyAt: new Date() // Use regular Date object instead of serverTimestamp()
+                            replyAt: new Date()
                           };
                           
-                          // Add new reply to the array
                           const updatedReplies = [...existingReplies, newReply];
                           
-                          // Update Firestore
                           await updateDoc(doc(db, 'surveys', fb.id), {
                             adminReplies: updatedReplies,
-                            // Keep the old adminReply field for backward compatibility
                             adminReply: replyText.trim(),
-                            replyAt: serverTimestamp(), // This is outside the array, so it's allowed
+                            replyAt: serverTimestamp(),
                           });
                           
-                          // Update local state
                           setFeedbacks(prev =>
-                            prev.map((item, i) =>
-                              i === actualIdx
+                            prev.map((item) =>
+                              item.id === fb.id
                                 ? { 
                                     ...item, 
                                     adminReplies: updatedReplies,
@@ -3310,7 +3312,6 @@ case 'services': {
                             )
                           );
                           
-                          // Hide reply field
                           const newSet = new Set(showReplyFor);
                           newSet.delete(fb.id);
                           setShowReplyFor(newSet);
@@ -3318,34 +3319,36 @@ case 'services': {
                         } catch (error) {
                           console.error('Error sending reply:', error);
                           alert(`Failed to send reply: ${error.message}`);
+                        } finally {
+                          setIsReplyingTo(null);
                         }
                       }}
+                      disabled={isReplyingTo === fb.id}
                       style={{
                         padding: '8px 16px',
-                        backgroundColor: '#4caf50',
+                        backgroundColor: isReplyingTo === fb.id ? '#ccc' : '#4caf50',
                         color: 'white',
                         border: 'none',
                         borderRadius: '4px',
-                        cursor: 'pointer'
+                        cursor: isReplyingTo === fb.id ? 'not-allowed' : 'pointer'
                       }}
                     >
-                      Send Reply
+                      {isReplyingTo === fb.id ? 'Sending...' : 'Send Reply'}
                     </button>
                     
                     <button
                       onClick={() => {
-                        // Cancel reply and hide field
                         const newSet = new Set(showReplyFor);
                         newSet.delete(fb.id);
                         setShowReplyFor(newSet);
                         
-                        // Clear any text that was typed
                         setFeedbacks(prev =>
                           prev.map((item, i) =>
                             i === actualIdx ? { ...item, replyText: '' } : item
                           )
                         );
                       }}
+                      disabled={isReplyingTo === fb.id}
                       style={{
                         padding: '8px 16px',
                         backgroundColor: '#9e9e9e',
@@ -3614,6 +3617,7 @@ case 'services': {
 
   return (
     <div className="dashboard-container">
+      {isLoading && <LoadingSpinner />}
       <aside className="sidebar">
         <div className="sidebar-header">
           <div className="clinic-brand">
