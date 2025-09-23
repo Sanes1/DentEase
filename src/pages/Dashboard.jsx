@@ -165,7 +165,7 @@ const [settingsForm, setSettingsForm] = useState({
   
   const [showPasswordForm, setShowPasswordForm] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
-  const [currentUserEmail, setCurrentUserEmail] = useState('admin@fanodental.com'); // This is static now
+  const [currentUserEmail, setCurrentUserEmail] = useState('admin123@gmail.com'); // This is static now
 
   // New state for real-time password validation
   const [passwordRequirements, setPasswordRequirements] = useState({
@@ -3579,7 +3579,6 @@ case 'services': {
                   <h4 style={{ margin: '0 0 10px 0', color: '#1976d2' }}>Security Information</h4>
                   <ul style={{ margin: 0, paddingLeft: '20px', color: '#333' }}>
                     <li>Always use a strong, unique password for your account.</li>
-                    <li>For production systems, it is highly recommended to use a dedicated authentication service like Firebase Authentication instead of storing passwords in the database.</li>
                     <li>Contact support if you have trouble accessing your account.</li>
                   </ul>
                 </div>
