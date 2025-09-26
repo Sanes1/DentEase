@@ -111,6 +111,12 @@ const Dashboard = () => {
   //Appointments State
   const [showCalendar, setShowCalendar] = useState(false);
   const [calendarDate, setCalendarDate] = useState(new Date());
+  
+  // Follow-up Modal State
+  const [showFollowUpModal, setShowFollowUpModal] = useState(false);
+  const [appointmentForFollowUp, setAppointmentForFollowUp] = useState(null);
+  const [followUpForm, setFollowUpForm] = useState({ date: new Date(), time: '' });
+
 
   //Feedback states
   const [showReplyFor, setShowReplyFor] = useState(new Set());
@@ -305,6 +311,10 @@ const [settingsForm, setSettingsForm] = useState({
 
   const rowsPerPage = 5;
 
+  // Services tab pagination states
+  const [servicesCurrentPage, setServicesCurrentPage] = useState(1);
+  const servicesPerPage = 3; 
+
   //PDF export
  const exportAppointmentsToPDF = async (appointmentsToExport) => {
   if (!appointmentsToExport || appointmentsToExport.length === 0) {
@@ -325,7 +335,7 @@ const [settingsForm, setSettingsForm] = useState({
       appt.doctor || "-",
       getServicesString(appt),
       formatDate(appt.appointmentDate || appt.date),
-      appt.time || "-",
+      formatAmPmTime(appt.time) || "-",
       appt.status ? appt.status.charAt(0).toUpperCase() + appt.status.slice(1) : "-"
     ];
     tableRows.push(apptData);
@@ -498,16 +508,16 @@ const [settingsForm, setSettingsForm] = useState({
     }
   };
 
-  // Delete image from Firebase Storage
+  // Delete image from Firebase Storage - CORRECTED
   const deleteServiceImage = async (imageUrl) => {
     if (!imageUrl) return;
     try {
-        // Use the full URL to create a reference directly - this is the robust way
+        // The most reliable way to get a reference is from the full URL.
         const imageRef = ref(storage, imageUrl);
         await deleteObject(imageRef);
     } catch (error) {
-        // If the error is 'object-not-found', it's okay, maybe it was already deleted.
-        // For other errors, we should log them.
+        // It's common for this to fail if the file doesn't exist, which is okay.
+        // We only want to log other, more serious errors.
         if (error.code !== 'storage/object-not-found') {
             console.error('Error deleting image:', error);
         }
@@ -562,6 +572,30 @@ const [settingsForm, setSettingsForm] = useState({
       return String(value);
     }
   };
+
+    const formatAmPmTime = (timeString) => {
+        if (!timeString || typeof timeString !== 'string') return null;
+
+        // FIX: Clean the input string to remove any existing AM/PM markers and whitespace.
+        const cleanedTimeString = timeString.replace(/AM|PM/gi, '').trim();
+        
+        const parts = cleanedTimeString.split(':');
+        if (parts.length < 2) return timeString; // Return original if format is unexpected
+
+        const hourString = parts[0];
+        const minute = parts[1];
+        
+        const hour = parseInt(hourString, 10);
+
+        // Check if hour is a valid number
+        if (isNaN(hour)) return timeString; 
+        
+        const period = hour >= 12 ? 'PM' : 'AM';
+        const adjustedHour = hour % 12 === 0 ? 12 : hour % 12;
+        
+        return `${String(adjustedHour).padStart(2, '0')}:${minute} ${period}`;
+    };
+
 
   const getServicesString = (appt) => {
     if (!appt) return '-';
@@ -863,13 +897,13 @@ const [settingsForm, setSettingsForm] = useState({
     }
   };
 
-  // FIXED: Fetch appointments from Firebase (real-time) - Updated to handle all status values including "finished"
+  // FIXED: Fetch appointments from Firebase (real-time) - Updated to handle all status values including "Completed"
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, "appointments"), (querySnapshot) => {
       const data = querySnapshot.docs.map(d => {
         const appt = d.data() || {};
         // FIXED: Don't override the status if it's already set correctly in the database
-        // Keep the original status from database, including "finished"
+        // Keep the original status from database, including "Completed"
         return {
           id: d.id,
           ...appt,
@@ -1077,6 +1111,38 @@ const [settingsForm, setSettingsForm] = useState({
     setAppointmentSearch(appointment.userName);
   };
 
+  const handleScheduleFollowUp = async () => {
+    if (!followUpForm.time) {
+        alert("Please select a time for the follow-up appointment.");
+        return;
+    }
+
+    try {
+        const newAppointmentData = {
+            userName: appointmentForFollowUp.userName,
+            userId: appointmentForFollowUp.userId,
+            userEmail: appointmentForFollowUp.userEmail,
+            appointmentDate: followUpForm.date,
+            time: followUpForm.time,
+            services: ["Follow-up Check-up"],
+            status: 'approved',
+            doctor: appointmentForFollowUp.doctor || "Dr. Jessicca Fano",
+            isFollowUp: true,
+            previousAppointmentId: appointmentForFollowUp.id,
+            createdAt: serverTimestamp()
+        };
+
+        await addDoc(collection(db, 'appointments'), newAppointmentData);
+        alert("Follow-up appointment scheduled successfully!");
+        setShowFollowUpModal(false);
+        setAppointmentForFollowUp(null);
+
+    } catch (error) {
+        console.error("Error scheduling follow-up:", error);
+        alert("Failed to schedule follow-up appointment.");
+    }
+  };
+
   // Filter chat rooms based on search
   const filteredChatRooms = chatRooms.filter(room => {
     const searchLower = messageSearch.toLowerCase();
@@ -1130,27 +1196,58 @@ const [settingsForm, setSettingsForm] = useState({
   const cancelledAppointments = appointments.filter(appt => appt.status === 'declined');
   const pendingAppointments = appointments.filter(appt => appt.status === 'pending');
 
-  // filter upcoming appointments
-  const filteredUpcoming = appointments
+  // --- START: CORRECTED UPCOMING APPOINTMENTS LOGIC ---
+const filteredUpcoming = appointments
     .filter(appt => {
-      if (appt.status !== 'approved') return false;
-      const ad = appt.appointmentDate || appt.date;
-      if (!ad) return false;
-      const apptDate = new Date(ad);
-      if (isNaN(apptDate)) return false;
-      if (upcomingFilter === 'Today') return apptDate.toDateString() === todayStr;
-      if (upcomingFilter === 'This Week') {
-        const weekStart = new Date(today);
-        weekStart.setDate(today.getDate() - today.getDay());
-        weekStart.setHours(0, 0, 0, 0);
-        const weekEnd = new Date(weekStart);
-        weekEnd.setDate(weekStart.getDate() + 6);
-        weekEnd.setHours(23, 59, 59, 999);
-        return apptDate >= weekStart && apptDate <= weekEnd;
-      }
-      return true;
+        if (appt.status !== 'approved') return false;
+
+        // Handle both Firebase Timestamp and string dates
+        const appointmentTimestamp = appt.appointmentDate?.seconds 
+            ? appt.appointmentDate.toMillis() 
+            : appt.appointmentDate;
+            
+        if (!appointmentTimestamp) return false;
+
+        const apptDate = new Date(appointmentTimestamp);
+        if (isNaN(apptDate.getTime())) return false; // Robust date validation
+
+        // Create a clean date (without time) for accurate comparison
+        const apptDateOnly = new Date(apptDate.getFullYear(), apptDate.getMonth(), apptDate.getDate());
+
+        const todayDate = new Date();
+        const todayDateOnly = new Date(todayDate.getFullYear(), todayDate.getMonth(), todayDate.getDate());
+
+        // Core Fix: Ensure the appointment date is today or in the future
+        if (apptDateOnly < todayDateOnly) {
+            return false;
+        }
+
+        // Apply dropdown filters ('All', 'Today', 'This Week')
+        if (upcomingFilter === 'Today') {
+            return apptDateOnly.getTime() === todayDateOnly.getTime();
+        }
+
+        if (upcomingFilter === 'This Week') {
+            const dayOfWeek = today.getDay(); // 0 (Sun) to 6 (Sat)
+            const firstDayOfWeek = new Date(todayDateOnly);
+            firstDayOfWeek.setDate(firstDayOfWeek.getDate() - dayOfWeek);
+
+            const lastDayOfWeek = new Date(firstDayOfWeek);
+            lastDayOfWeek.setDate(lastDayOfWeek.getDate() + 6);
+
+            return apptDateOnly >= firstDayOfWeek && apptDateOnly <= lastDayOfWeek;
+        }
+
+        // If filter is 'All', return true for any valid upcoming appointment
+        return true;
     })
-    .sort((a, b) => new Date(a.appointmentDate || a.date) - new Date(b.appointmentDate || b.date));
+    .sort((a, b) => {
+        // Sort by date to show the soonest appointments first
+        const dateA = a.appointmentDate?.seconds ? a.appointmentDate.toMillis() : new Date(a.appointmentDate).getTime();
+        const dateB = b.appointmentDate?.seconds ? b.appointmentDate.toMillis() : new Date(b.appointmentDate).getTime();
+        return dateA - dateB;
+    });
+// --- END: CORRECTED UPCOMING APPOINTMENTS LOGIC ---
 
   // Top Services data (same logic as analytics)
   const serviceCount = {};
@@ -1295,7 +1392,7 @@ const [settingsForm, setSettingsForm] = useState({
                 <td>{appt.userName}</td>
                 <td>{getServicesString(appt)}</td>
                 <td>{formatFullDate(appt.appointmentDate || appt.date)}</td>
-                <td>{appt.time || '-'}</td>
+                <td>{formatAmPmTime(appt.time) || '-'}</td>
               </tr>
             ))}
           </tbody>
@@ -1489,7 +1586,7 @@ const [settingsForm, setSettingsForm] = useState({
         }
 
          case 'appointment': {
-          // FIXED: Updated filter to include "finished" status
+          // CORRECTED: Updated filter to include "Completed" status
           const filteredAppointments = appointments
             .filter(appt => appointmentFilter === 'all' || appt.status === appointmentFilter)
             .filter(appt => {
@@ -1559,7 +1656,7 @@ const [settingsForm, setSettingsForm] = useState({
                 </div>
 
                 <div className="right-controls">
-                  {/* FIXED: Updated filter select to include "finished" option */}
+                  {/* CORRECTED: Updated filter select to include "Completed" option */}
                   <select
                     className="filter-select"
                     value={appointmentFilter}
@@ -1569,7 +1666,7 @@ const [settingsForm, setSettingsForm] = useState({
                     <option value="pending">Pending</option>
                     <option value="approved">Approved</option>
                     <option value="declined">Declined</option>
-                    <option value="finished">Finished</option>
+                    <option value="Completed">Completed</option>
                   </select>
                   <button
                     className="calendar-btn"
@@ -1924,6 +2021,119 @@ const [settingsForm, setSettingsForm] = useState({
                 </div>
               )}
 
+              {/* ENHANCED FOLLOW-UP MODAL */}
+                {showFollowUpModal && appointmentForFollowUp && (
+                    <div
+                        style={{
+                            backgroundColor: 'rgba(0, 0, 0, 0.6)',
+                            position: 'fixed',
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            display: 'flex',
+                            justifyContent: 'center',
+                            alignItems: 'center',
+                            zIndex: 1000,
+                            backdropFilter: 'blur(4px)'
+                        }}
+                        onClick={() => setShowFollowUpModal(false)}
+                    >
+                        <div
+                            style={{
+                                backgroundColor: 'white',
+                                padding: '0',
+                                borderRadius: '16px',
+                                boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 20px 25px -5px rgba(0, 0, 0, 0.1)',
+                                maxWidth: '500px',
+                                width: '90%',
+                                maxHeight: '90vh',
+                                overflow: 'auto',
+                                border: '1px solid #e5e7eb',
+                                display: 'flex',
+                                flexDirection: 'column'
+                            }}
+                            onClick={e => e.stopPropagation()}
+                        >
+                            {/* Modal Header */}
+                            <div style={{ background: '#094685', padding: '24px', color: 'white' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <h3 style={{ margin: 0, fontSize: '24px', fontWeight: '600', color: 'white' }}>
+                                        Schedule Follow-Up
+                                    </h3>
+                                    <button
+                                        style={{
+                                            background: 'rgba(255, 255, 255, 0.2)',
+                                            border: 'none', color: 'white', width: '32px', height: '32px',
+                                            borderRadius: '50%', cursor: 'pointer', display: 'flex',
+                                            alignItems: 'center', justifyContent: 'center', fontSize: '18px',
+                                            transition: 'background-color 0.2s'
+                                        }}
+                                        onClick={() => setShowFollowUpModal(false)}
+                                    >
+                                        ✕
+                                    </button>
+                                </div>
+                                <p style={{ margin: '8px 0 0 0', color: 'rgba(255, 255, 255, 0.8)' }}>
+                                    For Patient: <strong>{appointmentForFollowUp.userName}</strong>
+                                </p>
+                            </div>
+
+                            {/* Modal Content */}
+                            <div style={{ padding: '24px' }}>
+                                <div style={{ marginBottom: '20px' }}>
+                                    <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold', color: '#333' }}>
+                                        Select Follow-up Date:
+                                    </label>
+                                    <div style={{ border: '1px solid #ddd', borderRadius: '8px', padding: '10px' }}>
+                                        <ReactCalendar
+                                            onChange={date => setFollowUpForm(prev => ({ ...prev, date }))}
+                                            value={followUpForm.date}
+                                            minDate={new Date()}
+                                        />
+                                    </div>
+                                </div>
+
+                                <div style={{ marginBottom: '20px' }}>
+                                    <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold', color: '#333' }}>
+                                        Select Follow-up Time:
+                                    </label>
+                                    <input
+                                        type="time"
+                                        value={followUpForm.time}
+                                        onChange={e => setFollowUpForm(prev => ({ ...prev, time: e.target.value }))}
+                                        style={{
+                                            width: '100%',
+                                            padding: '12px',
+                                            border: '1px solid #ddd',
+                                            borderRadius: '8px',
+                                            fontSize: '16px'
+                                        }}
+                                    />
+                                </div>
+
+                                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
+                                    <button
+                                        className="btn-secondary"
+                                        style={{ padding: '10px 20px', borderRadius: '6px' }}
+                                        onClick={() => setShowFollowUpModal(false)}
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        className="btn-success"
+                                        style={{ padding: '10px 20px', borderRadius: '6px' }}
+                                        onClick={handleScheduleFollowUp}
+                                    >
+                                        Schedule Follow-up
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+
               <div className="appointment-list">
                 <table className="data-table">
                   <thead>
@@ -1943,43 +2153,29 @@ const [settingsForm, setSettingsForm] = useState({
                         <td>{appt.userName}</td>
                         <td>{appt.doctor || '-'}</td>
                         <td>{getServicesString(appt)}</td>
-                        <td>{formatDate(appt.appointmentDate || appt.date)}</td>
-                        <td>{appt.time || '-'}</td>
+                        <td>{formatFullDate(appt.appointmentDate || appt.date)}</td>
+                        <td>{formatAmPmTime(appt.time) || '-'}</td>
                         <td>
-                          <span className={`status-badge ${appt.status}`}>
-                            {appt.status
-                              ? appt.status.charAt(0).toUpperCase() + appt.status.slice(1)
-                              : '-'}
+                          <span className={`status-badge ${appt.status ? appt.status.toLowerCase() : ''}`}>
+                              {appt.status
+                                  ? appt.status.charAt(0).toUpperCase() + appt.status.slice(1)
+                                  : '-'}
                           </span>
                         </td>
                         <td>
-                          {/* FIXED: Only show action buttons for pending appointments, hide for finished */}
-                          {appt.status === 'pending' && (
-                            <>
-                              <button
-                                className="btn-sm btn-success"
-                                onClick={() =>
-                                  updateAppointmentStatus(appt.id, 'approved')
-                                }
-                              >
-                                Approve
-                              </button>
-                              <button
-                                className="btn-sm btn-danger"
-                                onClick={() =>
-                                  updateAppointmentStatus(appt.id, 'declined')
-                                }
-                              >
-                                Decline
-                              </button>
-                            </>
-                          )}
-                          {/* FIXED: Show no buttons for finished appointments */}
-                          {appt.status === 'finished' && (
-                            <span style={{ color: '#666', fontStyle: 'italic' }}>
-                              Completed
-                            </span>
-                          )}
+                            {appt.status === 'pending' && (
+                                <>
+                                    <button className="btn-sm btn-success" onClick={() => updateAppointmentStatus(appt.id, 'approved')}>Approve</button>
+                                    <button className="btn-sm btn-danger" onClick={() => updateAppointmentStatus(appt.id, 'declined')}>Decline</button>
+                                </>
+                            )}
+                            {appt.status === 'Completed' && (
+                                <button className="btn-sm btn-info" onClick={() => {
+                                    setAppointmentForFollowUp(appt);
+                                    setFollowUpForm({ date: new Date(), time: '' });
+                                    setShowFollowUpModal(true);
+                                }}>Follow-up</button>
+                            )}
                         </td>
                       </tr>
                     ))}
@@ -2101,6 +2297,11 @@ const [settingsForm, setSettingsForm] = useState({
         }
 
 case 'services': {
+    const servicesTotalPages = Math.max(1, Math.ceil(services.length / servicesPerPage));
+    const paginatedServices = services.slice(
+        (servicesCurrentPage - 1) * servicesPerPage,
+        servicesCurrentPage * servicesPerPage
+    );
   return (
     <div className="dashboard-content">
       {/* Title and button on one line */}
@@ -2152,7 +2353,7 @@ case 'services': {
           marginTop: '20px',
         }}
       >
-        {services.map(service => (
+        {paginatedServices.map(service => (
           <div
             key={service.id}
             className="service-card"
@@ -2319,6 +2520,27 @@ case 'services': {
           <p>Start by adding your first dental service using the "Add Service" button above.</p>
         </div>
       )}
+
+      {/* Pagination for Services */}
+      <div style={{ display: 'flex', justifyContent: 'center', marginTop: '20px', gap: '10px' }}>
+          <button
+              className="calendar-btn"
+              disabled={servicesCurrentPage === 1}
+              onClick={() => setServicesCurrentPage(p => Math.max(1, p - 1))}
+          >
+              Prev
+          </button>
+          <span style={{ alignSelf: 'center' }}>
+              Page {servicesCurrentPage} of {servicesTotalPages}
+          </span>
+          <button
+              className="calendar-btn"
+              disabled={servicesCurrentPage === servicesTotalPages}
+              onClick={() => setServicesCurrentPage(p => Math.min(servicesTotalPages, p + 1))}
+          >
+              Next
+          </button>
+      </div>
 
       {/* Pop-up modal */}
       {editingService && (
