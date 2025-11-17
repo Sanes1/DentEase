@@ -1585,41 +1585,96 @@ const filteredUpcoming = appointments
           );
         }
 
-         case 'appointment': {
-          // CORRECTED: Updated filter to include "Completed" status
-          const filteredAppointments = appointments
-            .filter(appt => appointmentFilter === 'all' || appt.status === appointmentFilter)
-            .filter(appt => {
-              const searchText = appointmentSearch.toLowerCase();
-              const patientName = appt.userName.toLowerCase();
-              const services = getServicesString(appt).toLowerCase();
-              return patientName.includes(searchText) || services.includes(searchText);
-            });
+        case 'appointment': {
+    // CORRECTED: Updated filter to include "Completed" status
+    const filteredAppointments = appointments
+        .filter(appt => appointmentFilter === 'all' || appt.status === appointmentFilter)
+        .filter(appt => {
+            const searchText = appointmentSearch.toLowerCase();
+            const patientName = appt.userName.toLowerCase();
+            const services = getServicesString(appt).toLowerCase();
+            return patientName.includes(searchText) || services.includes(searchText);
+        })
+        .sort((a, b) => {
+            // Sort by date (newest first)
+            const dateA = new Date(a.appointmentDate || a.date);
+            const dateB = new Date(b.appointmentDate || b.date);
+            return dateB - dateA;
+        });
 
-          const appointmentTotalPages = Math.max(
-            1,
-            Math.ceil(filteredAppointments.length / rowsPerPage)
-          );
+    const appointmentTotalPages = Math.max(
+        1,
+        Math.ceil(filteredAppointments.length / rowsPerPage)
+    );
 
-          const paginatedAppointments = filteredAppointments.slice(
-            (appointmentCurrentPage - 1) * rowsPerPage,
-            appointmentCurrentPage * rowsPerPage
-          );
+    const paginatedAppointments = filteredAppointments.slice(
+        (appointmentCurrentPage - 1) * rowsPerPage,
+        appointmentCurrentPage * rowsPerPage
+    );
 
-          // helper to style days with approved appts
-          const tileContent = ({ date, view }) => {
-            if (view !== 'month') return null;
-            const dateKey = formatDate(date);
-            const appts = approvedAppointmentsByDate[dateKey] || [];
-            return appts.length > 0 ? (
-              <div style={{ 
+    // This function will be called to update the main appointments list
+    const updateAppointmentInList = (updatedAppointment) => {
+        const updatedAppointments = appointments.map(appt =>
+            appt.id === updatedAppointment.id ? updatedAppointment : appt
+        );
+        // Assuming you have a state setter for your appointments list like `setAppointments`
+        setAppointments(updatedAppointments);
+    };
+
+
+    const handleScheduleFollowUp = async () => {
+        if (!appointmentForFollowUp || !followUpForm.date || !followUpForm.time) {
+            console.error("Missing follow-up information");
+            // Here you might want to show an error to the user
+            return;
+        }
+
+        // --- MOCK API CALL ---
+        // In a real application, you would make an API call here to save the follow-up
+        // For demonstration, we'll simulate a successful API call.
+        console.log("Scheduling follow-up for:", appointmentForFollowUp.userName);
+        console.log("Date:", followUpForm.date);
+        console.log("Time:", followUpForm.time);
+
+        // Simulate a delay
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
+        // --- POST-SUCCESS LOGIC ---
+
+        // 1. Create the updated appointment object with `followUpScheduled: true`
+        const updatedAppointment = {
+            ...appointmentForFollowUp,
+            followUpScheduled: true
+        };
+
+        // 2. Update the appointment in your main state
+        // You need to replace `setAppointments` with your actual state updater function
+        updateAppointmentInList(updatedAppointment);
+
+
+        // 3. Close the modal
+        setShowFollowUpModal(false);
+        setAppointmentForFollowUp(null);
+
+        // Optional: Show a success notification
+        // showSuccessToast("Follow-up scheduled successfully!");
+    };
+
+
+    // helper to style days with approved appts
+    const tileContent = ({ date, view }) => {
+        if (view !== 'month') return null;
+        const dateKey = formatDate(date);
+        const appts = approvedAppointmentsByDate[dateKey] || [];
+        return appts.length > 0 ? (
+            <div style={{
                 position: 'absolute',
                 top: '4px',
                 right: '4px',
-                textAlign: 'center', 
-                color: 'white', 
-                background: 'linear-gradient(135deg, #10b981, #059669)', 
-                borderRadius: '50%', 
+                textAlign: 'center',
+                color: 'white',
+                background: 'linear-gradient(135deg, #10b981, #059669)',
+                borderRadius: '50%',
                 fontSize: '10px',
                 fontWeight: 'bold',
                 minWidth: '18px',
@@ -1630,148 +1685,148 @@ const filteredUpcoming = appointments
                 boxShadow: '0 2px 4px rgba(16, 185, 129, 0.4)',
                 border: '2px solid white',
                 zIndex: 1
-              }}>
+            }}>
                 {appts.length}
-              </div>
-            ) : null;
-          };
+            </div>
+        ) : null;
+    };
 
-          return (
-            <div className="dashboard-content">
-              <div className="controls-wrapper">
+    return (
+        <div className="dashboard-content">
+            <div className="controls-wrapper">
                 <div className="left-controls">
-                  <input
-                    type="text"
-                    placeholder="Search patients..."
-                    value={appointmentSearch}
-                    onChange={(e) => setAppointmentSearch(e.target.value)}
-                    className="search-input"
-                  />
-                  <button
-                    className="export-btn"
-                    onClick={async () => await exportAppointmentsToPDF(filteredAppointments)}
-                  >
-                    Export PDF
-                  </button>
+                    <input
+                        type="text"
+                        placeholder="Search patients..."
+                        value={appointmentSearch}
+                        onChange={(e) => setAppointmentSearch(e.target.value)}
+                        className="search-input"
+                    />
+                    <button
+                        className="export-btn"
+                        onClick={async () => await exportAppointmentsToPDF(filteredAppointments)}
+                    >
+                        Export PDF
+                    </button>
                 </div>
 
                 <div className="right-controls">
-                  {/* CORRECTED: Updated filter select to include "Completed" option */}
-                  <select
-                    className="filter-select"
-                    value={appointmentFilter}
-                    onChange={(e) => setAppointmentFilter(e.target.value)}
-                  >
-                    <option value="all">All Appointments</option>
-                    <option value="pending">Pending</option>
-                    <option value="approved">Approved</option>
-                    <option value="declined">Declined</option>
-                    <option value="Completed">Completed</option>
-                  </select>
-                  <button
-                    className="calendar-btn"
-                    onClick={() => setShowCalendar(!showCalendar)}
-                  >
-                    📅 Calendar View
-                  </button>
+                    {/* CORRECTED: Updated filter select to include "Completed" option */}
+                    <select
+                        className="filter-select"
+                        value={appointmentFilter}
+                        onChange={(e) => setAppointmentFilter(e.target.value)}
+                    >
+                        <option value="all">All Appointments</option>
+                        <option value="pending">Pending</option>
+                        <option value="approved">Approved</option>
+                        <option value="declined">Declined</option>
+                        <option value="Completed">Completed</option>
+                    </select>
+                    <button
+                        className="calendar-btn"
+                        onClick={() => setShowCalendar(!showCalendar)}
+                    >
+                        📅 Calendar View
+                    </button>
                 </div>
-              </div>
+            </div>
 
-              {/* ENHANCED CALENDAR MODAL */}
-              {showCalendar && (
+            {/* ENHANCED CALENDAR MODAL */}
+            {showCalendar && (
                 <div
-                  style={{
-                    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-                    position: 'fixed',
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    display: 'flex',
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                    zIndex: 1000,
-                    backdropFilter: 'blur(4px)'
-                  }}
-                  onClick={() => setShowCalendar(false)}
-                >
-                  <div
                     style={{
-                      backgroundColor: 'white',
-                      padding: '0',
-                      borderRadius: '16px',
-                      boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 20px 25px -5px rgba(0, 0, 0, 0.1)',
-                      maxWidth: '500px',
-                      width: '90%',
-                      maxHeight: '90vh',
-                      overflow: 'auto',
-                      border: '1px solid #e5e7eb',
-                      display: 'flex',
-                      flexDirection: 'column'
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    {/* Calendar Header */}
-                    <div style={{
-                      background: '#094685',
-                      padding: '24px',
-                      color: 'white'
-                    }}>
-                      <div style={{
+                        backgroundColor: 'rgba(0, 0, 0, 0.6)',
+                        position: 'fixed',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
                         display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center'
-                      }}>
-                        <h3 style={{
-                          margin: '0',
-                          fontSize: '24px',
-                          fontWeight: '600',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '12px',
-                          color: 'white'
-                        }}>
-                          <span style={{ fontSize: '28px' }}>📅</span>
-                          Appointments Calendar
-                        </h3>
-                        <button
-                          style={{
-                            background: 'rgba(255, 255, 255, 0.2)',
-                            border: 'none',
-                            color: 'white',
-                            width: '32px',
-                            height: '32px',
-                            borderRadius: '50%',
-                            cursor: 'pointer',
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                        zIndex: 1000,
+                        backdropFilter: 'blur(4px)'
+                    }}
+                    onClick={() => setShowCalendar(false)}
+                >
+                    <div
+                        style={{
+                            backgroundColor: 'white',
+                            padding: '0',
+                            borderRadius: '16px',
+                            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 20px 25px -5px rgba(0, 0, 0, 0.1)',
+                            maxWidth: '500px',
+                            width: '90%',
+                            maxHeight: '90vh',
+                            overflow: 'auto',
+                            border: '1px solid #e5e7eb',
                             display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            fontSize: '18px',
-                            transition: 'background-color 0.2s'
-                          }}
-                          onClick={() => setShowCalendar(false)}
-                          onMouseEnter={(e) => e.target.style.backgroundColor = 'rgba(255, 255, 255, 0.3)'}
-                          onMouseLeave={(e) => e.target.style.backgroundColor = 'rgba(255, 255, 255, 0.2)'}
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    </div>
+                            flexDirection: 'column'
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        {/* Calendar Header */}
+                        <div style={{
+                            background: '#094685',
+                            padding: '24px',
+                            color: 'white'
+                        }}>
+                            <div style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center'
+                            }}>
+                                <h3 style={{
+                                    margin: '0',
+                                    fontSize: '24px',
+                                    fontWeight: '600',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '12px',
+                                    color: 'white'
+                                }}>
+                                    <span style={{ fontSize: '28px' }}>📅</span>
+                                    Appointments Calendar
+                                </h3>
+                                <button
+                                    style={{
+                                        background: 'rgba(255, 255, 255, 0.2)',
+                                        border: 'none',
+                                        color: 'white',
+                                        width: '32px',
+                                        height: '32px',
+                                        borderRadius: '50%',
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        fontSize: '18px',
+                                        transition: 'background-color 0.2s'
+                                    }}
+                                    onClick={() => setShowCalendar(false)}
+                                    onMouseEnter={(e) => e.target.style.backgroundColor = 'rgba(255, 255, 255, 0.3)'}
+                                    onMouseLeave={(e) => e.target.style.backgroundColor = 'rgba(255, 255, 255, 0.2)'}
+                                >
+                                    ✕
+                                </button>
+                            </div>
+                        </div>
 
-                    {/* Calendar Content */}
-                    <div style={{ 
-                      padding: '24px',
-                      flex: '1',
-                      overflowY: 'auto'
-                    }}>
-                      <div style={{
-                        backgroundColor: '#f8fafc',
-                        borderRadius: '12px',
-                        padding: '16px',
-                        marginBottom: '10px'
-                      }}>
-                        <style>
-                          {`
+                        {/* Calendar Content */}
+                        <div style={{
+                            padding: '24px',
+                            flex: '1',
+                            overflowY: 'auto'
+                        }}>
+                            <div style={{
+                                backgroundColor: '#f8fafc',
+                                borderRadius: '12px',
+                                padding: '16px',
+                                marginBottom: '10px'
+                            }}>
+                                <style>
+                                    {`
                             .react-calendar {
                               width: 100% !important;
                               background: transparent !important;
@@ -1880,212 +1935,303 @@ const filteredUpcoming = appointments
                               border-color: #3b82f6 !important;
                             }
                           `}
-                        </style>
-                        <ReactCalendar
-                          onChange={setCalendarDate}
-                          value={calendarDate}
-                          tileContent={tileContent}
-                        />
-                      </div>
-                      
-                      {/* APPOINTMENT DETAILS SECTION - FINAL DESIGN */}
-                      <div style={{ 
-                        marginTop: '20px',
-                        padding: '20px',
-                        backgroundColor: '#f0f9ff',
-                        borderRadius: '12px',
-                        border: '1px solid #e0f2fe'
-                      }}>
-                        <div style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '12px',
-                          marginBottom: '16px'
-                        }}>
-                          <div style={{
-                            width: '40px',
-                            height: '40px',
-                            backgroundColor: '#0ea5e9',
-                            borderRadius: '10px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            color: 'white',
-                            fontSize: '18px'
-                          }}>
-                            📆
-                          </div>
-                          <div>
-                            <h4 style={{
-                              margin: '0 0 4px 0',
-                              fontSize: '18px',
-                              fontWeight: '600',
-                              color: '#0c4a6e'
-                            }}>
-                              {formatDate(calendarDate)}
-                            </h4>
-                            <p style={{
-                              margin: '0',
-                              fontSize: '14px',
-                              color: '#64748b'
-                            }}>
-                              {(() => {
-                                const appointments = approvedAppointmentsByDate[formatDate(calendarDate)] || [];
-                                console.log('Appointments for', formatDate(calendarDate), ':', appointments);
-                                return `${appointments.length} appointment${appointments.length !== 1 ? 's' : ''} scheduled`;
-                              })()}
-                            </p>
-                          </div>
-                        </div>
-
-                        {(() => {
-                          const appointments = approvedAppointmentsByDate[formatDate(calendarDate)] || [];
-                          
-                          if (appointments.length > 0) {
-                            return (
-                              <div style={{ marginTop: '16px' }}>
-                                <div style={{
-                                  fontSize: '14px',
-                                  fontWeight: '500',
-                                  color: '#374151',
-                                  marginBottom: '12px'
-                                }}>
-                                  Scheduled Appointments:
-                                </div>
-                                <div style={{
-                                  maxHeight: '200px',
-                                  overflowY: 'auto'
-                                }}>
-                                  {appointments.map(appt => (
-                                    <div key={appt.id} style={{
-                                      backgroundColor: 'white',
-                                      borderRadius: '8px',
-                                      padding: '12px 16px',
-                                      marginBottom: '8px',
-                                      border: '1px solid #e2e8f0',
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      gap: '12px'
-                                    }}>
-                                      <div style={{
-                                        width: '8px',
-                                        height: '8px',
-                                        backgroundColor: '#10b981',
-                                        borderRadius: '50%',
-                                        flexShrink: 0
-                                      }}></div>
-                                      <div style={{ flex: 1 }}>
-                                        <div style={{
-                                          fontWeight: '500',
-                                          color: '#1f2937',
-                                          fontSize: '14px'
-                                        }}>
-                                          {appt.userName}
-                                        </div>
-                                        <div style={{
-                                          fontSize: '13px',
-                                          color: '#6b7280',
-                                          marginTop: '2px'
-                                        }}>
-                                          {getServicesString(appt)}
-                                        </div>
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            );
-                          } else {
-                            return (
-                              <div style={{
-                                textAlign: 'center',
-                                padding: '20px',
-                                color: '#6b7280',
-                                fontSize: '14px'
-                              }}>
-                                <div style={{
-                                  fontSize: '32px',
-                                  marginBottom: '8px',
-                                  opacity: 0.5
-                                }}>
-                                  📅
-                                </div>
-                                No appointments scheduled for this date
-                              </div>
-                            );
-                          }
-                        })()}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* ENHANCED FOLLOW-UP MODAL */}
-                {showFollowUpModal && appointmentForFollowUp && (
-                    <div
-                        style={{
-                            backgroundColor: 'rgba(0, 0, 0, 0.6)',
-                            position: 'fixed',
-                            top: 0,
-                            left: 0,
-                            right: 0,
-                            bottom: 0,
-                            display: 'flex',
-                            justifyContent: 'center',
-                            alignItems: 'center',
-                            zIndex: 1000,
-                            backdropFilter: 'blur(4px)'
-                        }}
-                        onClick={() => setShowFollowUpModal(false)}
-                    >
-                        <div
-                            style={{
-                                backgroundColor: 'white',
-                                padding: '0',
-                                borderRadius: '16px',
-                                boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 20px 25px -5px rgba(0, 0, 0, 0.1)',
-                                maxWidth: '500px',
-                                width: '90%',
-                                maxHeight: '90vh',
-                                overflow: 'auto',
-                                border: '1px solid #e5e7eb',
-                                display: 'flex',
-                                flexDirection: 'column'
-                            }}
-                            onClick={e => e.stopPropagation()}
-                        >
-                            {/* Modal Header */}
-                            <div style={{ background: '#094685', padding: '24px', color: 'white' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    <h3 style={{ margin: 0, fontSize: '24px', fontWeight: '600', color: 'white' }}>
-                                        Schedule Follow-Up
-                                    </h3>
-                                    <button
-                                        style={{
-                                            background: 'rgba(255, 255, 255, 0.2)',
-                                            border: 'none', color: 'white', width: '32px', height: '32px',
-                                            borderRadius: '50%', cursor: 'pointer', display: 'flex',
-                                            alignItems: 'center', justifyContent: 'center', fontSize: '18px',
-                                            transition: 'background-color 0.2s'
-                                        }}
-                                        onClick={() => setShowFollowUpModal(false)}
-                                    >
-                                        ✕
-                                    </button>
-                                </div>
-                                <p style={{ margin: '8px 0 0 0', color: 'rgba(255, 255, 255, 0.8)' }}>
-                                    For Patient: <strong>{appointmentForFollowUp.userName}</strong>
-                                </p>
+                                </style>
+                                <ReactCalendar
+                                    onChange={setCalendarDate}
+                                    value={calendarDate}
+                                    tileContent={tileContent}
+                                />
                             </div>
 
-                            {/* Modal Content */}
-                            <div style={{ padding: '24px' }}>
-                                <div style={{ marginBottom: '20px' }}>
-                                    <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold', color: '#333' }}>
-                                        Select Follow-up Date:
-                                    </label>
-                                    <div style={{ border: '1px solid #ddd', borderRadius: '8px', padding: '10px' }}>
+                            {/* APPOINTMENT DETAILS SECTION - FINAL DESIGN */}
+                            <div style={{
+                                marginTop: '20px',
+                                padding: '20px',
+                                backgroundColor: '#f0f9ff',
+                                borderRadius: '12px',
+                                border: '1px solid #e0f2fe'
+                            }}>
+                                <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '12px',
+                                    marginBottom: '16px'
+                                }}>
+                                    <div style={{
+                                        width: '40px',
+                                        height: '40px',
+                                        backgroundColor: '#0ea5e9',
+                                        borderRadius: '10px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        color: 'white',
+                                        fontSize: '18px'
+                                    }}>
+                                        📆
+                                    </div>
+                                    <div>
+                                        <h4 style={{
+                                            margin: '0 0 4px 0',
+                                            fontSize: '18px',
+                                            fontWeight: '600',
+                                            color: '#0c4a6e'
+                                        }}>
+                                            {formatDate(calendarDate)}
+                                        </h4>
+                                        <p style={{
+                                            margin: '0',
+                                            fontSize: '14px',
+                                            color: '#64748b'
+                                        }}>
+                                            {(() => {
+                                                const appointments = approvedAppointmentsByDate[formatDate(calendarDate)] || [];
+                                                console.log('Appointments for', formatDate(calendarDate), ':', appointments);
+                                                return `${appointments.length} appointment${appointments.length !== 1 ? 's' : ''} scheduled`;
+                                            })()}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                {(() => {
+                                    const appointments = approvedAppointmentsByDate[formatDate(calendarDate)] || [];
+
+                                    if (appointments.length > 0) {
+                                        return (
+                                            <div style={{ marginTop: '16px' }}>
+                                                <div style={{
+                                                    fontSize: '14px',
+                                                    fontWeight: '500',
+                                                    color: '#374151',
+                                                    marginBottom: '12px'
+                                                }}>
+                                                    Scheduled Appointments:
+                                                </div>
+                                                <div style={{
+                                                    maxHeight: '200px',
+                                                    overflowY: 'auto'
+                                                }}>
+                                                    {appointments.map(appt => (
+                                                        <div key={appt.id} style={{
+                                                            backgroundColor: 'white',
+                                                            borderRadius: '8px',
+                                                            padding: '12px 16px',
+                                                            marginBottom: '8px',
+                                                            border: '1px solid #e2e8f0',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            gap: '12px'
+                                                        }}>
+                                                            <div style={{
+                                                                width: '8px',
+                                                                height: '8px',
+                                                                backgroundColor: '#10b981',
+                                                                borderRadius: '50%',
+                                                                flexShrink: 0
+                                                            }}></div>
+                                                            <div style={{ flex: 1 }}>
+                                                                <div style={{
+                                                                    fontWeight: '500',
+                                                                    color: '#1f2937',
+                                                                    fontSize: '14px'
+                                                                }}>
+                                                                    {appt.userName}
+                                                                </div>
+                                                                <div style={{
+                                                                    fontSize: '13px',
+                                                                    color: '#6b7280',
+                                                                    marginTop: '2px'
+                                                                }}>
+                                                                    {getServicesString(appt)}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        );
+                                    } else {
+                                        return (
+                                            <div style={{
+                                                textAlign: 'center',
+                                                padding: '20px',
+                                                color: '#6b7280',
+                                                fontSize: '14px'
+                                            }}>
+                                                <div style={{
+                                                    fontSize: '32px',
+                                                    marginBottom: '8px',
+                                                    opacity: 0.5
+                                                }}>
+                                                    📅
+                                                </div>
+                                                No appointments scheduled for this date
+                                            </div>
+                                        );
+                                    }
+                                })()}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ENHANCED FOLLOW-UP MODAL */}
+            {showFollowUpModal && appointmentForFollowUp && (
+                <div
+                    style={{
+                        backgroundColor: 'rgba(0, 0, 0, 0.6)',
+                        position: 'fixed',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        display: 'flex',
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                        zIndex: 1000,
+                        backdropFilter: 'blur(4px)'
+                    }}
+                    onClick={() => setShowFollowUpModal(false)}
+                >
+                    <div
+                        style={{
+                            backgroundColor: 'white',
+                            padding: '0',
+                            borderRadius: '16px',
+                            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 20px 25px -5px rgba(0, 0, 0, 0.1)',
+                            maxWidth: '500px',
+                            width: '90%',
+                            maxHeight: '90vh',
+                            overflow: 'auto',
+                            border: '1px solid #e5e7eb',
+                            display: 'flex',
+                            flexDirection: 'column'
+                        }}
+                        onClick={e => e.stopPropagation()}
+                    >
+                        {/* Modal Header */}
+                        <div style={{
+                            background: '#094685',
+                            padding: '24px',
+                            color: 'white'
+                        }}>
+                            <div style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center'
+                            }}>
+                                <h3 style={{
+                                    margin: '0',
+                                    fontSize: '24px',
+                                    fontWeight: '600',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '12px',
+                                    color: 'white'
+                                }}>
+                                    <span style={{ fontSize: '28px' }}>🔄</span>
+                                    Schedule Follow-Up
+                                </h3>
+                                <button
+                                    style={{
+                                        background: 'rgba(255, 255, 255, 0.2)',
+                                        border: 'none',
+                                        color: 'white',
+                                        width: '32px',
+                                        height: '32px',
+                                        borderRadius: '50%',
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        fontSize: '18px',
+                                        transition: 'background-color 0.2s'
+                                    }}
+                                    onClick={() => setShowFollowUpModal(false)}
+                                    onMouseEnter={(e) => e.target.style.backgroundColor = 'rgba(255, 255, 255, 0.3)'}
+                                    onMouseLeave={(e) => e.target.style.backgroundColor = 'rgba(255, 255, 255, 0.2)'}
+                                >
+                                    ✕
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Patient Info Banner */}
+                        <div style={{
+                            backgroundColor: '#f0f9ff',
+                            padding: '16px 24px',
+                            borderBottom: '1px solid #e0f2fe',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '12px'
+                        }}>
+                            <div style={{
+                                width: '40px',
+                                height: '40px',
+                                backgroundColor: '#0ea5e9',
+                                borderRadius: '50%',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                color: 'white',
+                                fontSize: '18px',
+                                fontWeight: '600'
+                            }}>
+                                {appointmentForFollowUp.userName.charAt(0).toUpperCase()}
+                            </div>
+                            <div>
+                                <div style={{
+                                    fontSize: '12px',
+                                    color: '#64748b',
+                                    marginBottom: '2px'
+                                }}>
+                                    Patient
+                                </div>
+                                <div style={{
+                                    fontSize: '16px',
+                                    fontWeight: '600',
+                                    color: '#0c4a6e'
+                                }}>
+                                    {appointmentForFollowUp.userName}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Modal Content */}
+                        <div style={{
+                            padding: '24px',
+                            flex: '1',
+                            overflowY: 'auto'
+                        }}>
+                            {/* Date Selection */}
+                            <div style={{ marginBottom: '24px' }}>
+                                <label style={{
+                                    display: 'block',
+                                    marginBottom: '12px',
+                                    fontWeight: '600',
+                                    color: '#374151',
+                                    fontSize: '14px',
+                                    textAlign: 'center'
+                                }}>
+                                    📅 Select Follow-up Date
+                                </label>
+                                <div style={{
+                                    backgroundColor: '#f8fafc',
+                                    borderRadius: '12px',
+                                    padding: '16px',
+                                    border: '1px solid #e2e8f0'
+                                }}>
+                                    <style>
+                                        {`
+                            .follow-up-calendar .react-calendar {
+                              width: 100% !important;
+                              margin: 0 auto !important;
+                              max-width: 350px !important;
+                            }
+                          `}
+                                    </style>
+                                    <div className="follow-up-calendar" style={{ display: 'flex', justifyContent: 'center' }}>
                                         <ReactCalendar
                                             onChange={date => setFollowUpForm(prev => ({ ...prev, date }))}
                                             value={followUpForm.date}
@@ -2093,133 +2239,224 @@ const filteredUpcoming = appointments
                                         />
                                     </div>
                                 </div>
+                            </div>
 
-                                <div style={{ marginBottom: '20px' }}>
-                                    <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold', color: '#333' }}>
-                                        Select Follow-up Time:
-                                    </label>
-                                    <input
-                                        type="time"
-                                        value={followUpForm.time}
-                                        onChange={e => setFollowUpForm(prev => ({ ...prev, time: e.target.value }))}
-                                        style={{
-                                            width: '100%',
-                                            padding: '12px',
-                                            border: '1px solid #ddd',
-                                            borderRadius: '8px',
-                                            fontSize: '16px'
-                                        }}
-                                    />
-                                </div>
+                            {/* Time Selection */}
+                            <div style={{ marginBottom: '24px' }}>
+                                <label style={{
+                                    display: 'block',
+                                    marginBottom: '12px',
+                                    fontWeight: '600',
+                                    color: '#374151',
+                                    fontSize: '14px'
+                                }}>
+                                    🕐 Select Follow-up Time
+                                </label>
+                                <input
+                                    type="time"
+                                    value={followUpForm.time}
+                                    onChange={e => setFollowUpForm(prev => ({ ...prev, time: e.target.value }))}
+                                    style={{
+                                        width: '100%',
+                                        padding: '14px 16px',
+                                        border: '1px solid #e2e8f0',
+                                        borderRadius: '10px',
+                                        fontSize: '16px',
+                                        backgroundColor: 'white',
+                                        transition: 'all 0.2s ease',
+                                        outline: 'none'
+                                    }}
+                                    onFocus={(e) => {
+                                        e.target.style.borderColor = '#0ea5e9';
+                                        e.target.style.boxShadow = '0 0 0 3px rgba(14, 165, 233, 0.1)';
+                                    }}
+                                    onBlur={(e) => {
+                                        e.target.style.borderColor = '#e2e8f0';
+                                        e.target.style.boxShadow = 'none';
+                                    }}
+                                />
+                            </div>
 
-                                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
-                                    <button
-                                        className="btn-secondary"
-                                        style={{ padding: '10px 20px', borderRadius: '6px' }}
-                                        onClick={() => setShowFollowUpModal(false)}
-                                    >
-                                        Cancel
-                                    </button>
-                                    <button
-                                        className="btn-success"
-                                        style={{ padding: '10px 20px', borderRadius: '6px' }}
-                                        onClick={handleScheduleFollowUp}
-                                    >
-                                        Schedule Follow-up
-                                    </button>
-                                </div>
+                            {/* Action Buttons */}
+                            <div style={{
+                                display: 'flex',
+                                justifyContent: 'flex-end',
+                                gap: '12px',
+                                marginTop: '24px',
+                                paddingTop: '20px',
+                                borderTop: '1px solid #e5e7eb'
+                            }}>
+                                <button
+                                    style={{
+                                        padding: '12px 24px',
+                                        borderRadius: '10px',
+                                        border: '1px solid #e5e7eb',
+                                        backgroundColor: 'white',
+                                        color: '#64748b',
+                                        fontSize: '14px',
+                                        fontWeight: '500',
+                                        cursor: 'pointer',
+                                        transition: 'all 0.2s ease'
+                                    }}
+                                    onClick={() => setShowFollowUpModal(false)}
+                                    onMouseEnter={(e) => {
+                                        e.target.style.backgroundColor = '#f8fafc';
+                                        e.target.style.borderColor = '#cbd5e1';
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        e.target.style.backgroundColor = 'white';
+                                        e.target.style.borderColor = '#e5e7eb';
+                                    }}
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    style={{
+                                        padding: '12px 24px',
+                                        borderRadius: '10px',
+                                        border: 'none',
+                                        background: '#094685',
+                                        color: 'white',
+                                        fontSize: '14px',
+                                        fontWeight: '600',
+                                        cursor: 'pointer',
+                                        transition: 'all 0.2s ease',
+                                        boxShadow: '0 4px 6px -1px rgba(9, 70, 133, 0.3)',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '8px'
+                                    }}
+                                    onClick={handleScheduleFollowUp}
+                                    onMouseEnter={(e) => {
+                                        e.target.style.transform = 'translateY(-1px)';
+                                        e.target.style.boxShadow = '0 6px 12px -1px rgba(9, 70, 133, 0.4)';
+                                        e.target.style.background = '#0a5a9e';
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        e.target.style.transform = 'translateY(0)';
+                                        e.target.style.boxShadow = '0 4px 6px -1px rgba(9, 70, 133, 0.3)';
+                                        e.target.style.background = '#094685';
+                                    }}
+                                >
+                                    <span>📅</span>
+                                    Schedule Follow-up
+                                </button>
                             </div>
                         </div>
                     </div>
-                )}
+                </div>
+            )}
 
-
-              <div className="appointment-list">
+            <div className="appointment-list">
                 <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Patient Name</th>
-                      <th>Doctor</th>
-                      <th>Service</th>
-                      <th>Date</th>
-                      <th>Time</th>
-                      <th>Status</th>
-                      <th>Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {paginatedAppointments.map(appt => (
-                      <tr key={appt.id}>
-                        <td>{appt.userName}</td>
-                        <td>{appt.doctor || '-'}</td>
-                        <td>{getServicesString(appt)}</td>
-                        <td>{formatFullDate(appt.appointmentDate || appt.date)}</td>
-                        <td>{formatAmPmTime(appt.time) || '-'}</td>
-                        <td>
-                          <span className={`status-badge ${appt.status ? appt.status.toLowerCase() : ''}`}>
-                              {appt.status
-                                  ? appt.status.charAt(0).toUpperCase() + appt.status.slice(1)
-                                  : '-'}
-                          </span>
-                        </td>
-                        <td>
-                            {appt.status === 'pending' && (
-                                <>
-                                    <button className="btn-sm btn-success" onClick={() => updateAppointmentStatus(appt.id, 'approved')}>Approve</button>
-                                    <button className="btn-sm btn-danger" onClick={() => updateAppointmentStatus(appt.id, 'declined')}>Decline</button>
-                                </>
-                            )}
-                            {appt.status === 'Completed' && (
-                                <button className="btn-sm btn-info" onClick={() => {
-                                    setAppointmentForFollowUp(appt);
-                                    setFollowUpForm({ date: new Date(), time: '' });
-                                    setShowFollowUpModal(true);
-                                }}>Follow-up</button>
-                            )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
+                    <thead>
+                        <tr>
+                            <th>Patient Name</th>
+                            <th>Doctor</th>
+                            <th>Service</th>
+                            <th>Date</th>
+                            <th>Time</th>
+                            <th>Status</th>
+                            {/* ✅ FINAL: Set a fixed width on the header */}
+                            <th style={{ width: '120px' }}>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {paginatedAppointments.map(appt => (
+                            <tr key={appt.id}>
+                                <td>{appt.userName}</td>
+                                <td>{appt.doctor || '-'}</td>
+                                <td>{getServicesString(appt)}</td>
+                                <td>{formatFullDate(appt.appointmentDate || appt.date)}</td>
+                                <td>{formatAmPmTime(appt.time) || '-'}</td>
+                                <td>
+                                    <span className={`status-badge ${appt.status ? appt.status.toLowerCase() : ''}`}>
+                                        {appt.status
+                                            ? appt.status.charAt(0).toUpperCase() + appt.status.slice(1)
+                                            : '-'}
+                                    </span>
+                                </td>
+                                {/* ✅ FINAL: Override the CSS for this cell ONLY to allow wrapping */}
+                                <td style={{ whiteSpace: 'normal' }}>
+                                    {appt.status === 'pending' && (
+                                        // Stack buttons vertically
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', alignItems: 'flex-start' }}>
+                                            <button className="btn-sm btn-success" onClick={() => updateAppointmentStatus(appt.id, 'approved')}>Approve</button>
+                                            <button className="btn-sm btn-danger" onClick={() => updateAppointmentStatus(appt.id, 'declined')}>Decline</button>
+                                        </div>
+                                    )}
+                                    {appt.status === 'Completed' && !appt.followUpScheduled && (
+                                        <button
+                                            className="export-btn"
+                                            // ✅ FINAL & SIMPLE FIX: Just make the button smaller.
+                                            style={{
+                                                padding: '6px 10px',
+                                                fontSize: '10px',
+                                                whiteSpace: 'nowrap'
+                                            }}
+                                            onClick={() => {
+                                                setAppointmentForFollowUp(appt);
+                                                setFollowUpForm({ date: new Date(), time: '' });
+                                                setShowFollowUpModal(true);
+                                            }}
+                                        >
+                                            Follow-up
+                                        </button>
+                                    )}
+                                    {appt.status === 'Completed' && appt.followUpScheduled && (
+    <span style={{
+        color: '#10b981',
+        fontSize: '12px', // <-- Add this line
+        fontWeight: '500',
+        whiteSpace: 'nowrap'
+    }}>
+        ✓ Follow-up
+    </span>
+                                    )}
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
                 </table>
-              </div>
+            </div>
 
-              {/* pagination */}
-              <div
+            {/* pagination */}
+            <div
                 style={{
-                  display: 'flex',
-                  justifyContent: 'center',
-                  marginTop: '15px',
-                  gap: '10px'
+                    display: 'flex',
+                    justifyContent: 'center',
+                    marginTop: '15px',
+                    gap: '10px'
                 }}
-              >
+            >
                 <button
-                  className="calendar-btn"
-                  disabled={appointmentCurrentPage === 1}
-                  onClick={() =>
-                    setAppointmentCurrentPage((p) => Math.max(1, p - 1))
-                  }
+                    className="calendar-btn"
+                    disabled={appointmentCurrentPage === 1}
+                    onClick={() =>
+                        setAppointmentCurrentPage((p) => Math.max(1, p - 1))
+                    }
                 >
-                  Prev
+                    Prev
                 </button>
                 <span style={{ alignSelf: 'center' }}>
-                  Page {appointmentCurrentPage} of {appointmentTotalPages}
+                    Page {appointmentCurrentPage} of {appointmentTotalPages}
                 </span>
                 <button
-                  className="calendar-btn"
-                  disabled={appointmentCurrentPage === appointmentTotalPages}
-                  onClick={() =>
-                    setAppointmentCurrentPage((p) =>
-                      Math.min(appointmentTotalPages, p + 1)
-                    )
-                  }
+                    className="calendar-btn"
+                    disabled={appointmentCurrentPage === appointmentTotalPages}
+                    onClick={() =>
+                        setAppointmentCurrentPage((p) =>
+                            Math.min(appointmentTotalPages, p + 1)
+                        )
+                    }
                 >
-                  Next
+                    Next
                 </button>
-              </div>
             </div>
-          );
-        }
-
+        </div>
+    );
+}
+        
         case 'patient': {
           return (
             <div className="dashboard-content">
