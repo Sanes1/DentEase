@@ -1143,6 +1143,11 @@ const [settingsForm, setSettingsForm] = useState({
     }
   };
 
+  //setting state
+  const [activeSettingsTab, setActiveSettingsTab] = useState('account'); // Can be 'account' or 'contact'
+  const [contactInfo, setContactInfo] = useState({ phoneNumber: '', latitude: '', longitude: '' });
+  const [isSaving, setIsSaving] = useState(false);
+
   // Filter chat rooms based on search
   const filteredChatRooms = chatRooms.filter(room => {
     const searchLower = messageSearch.toLowerCase();
@@ -3935,187 +3940,237 @@ case 'services': {
   );
 }
         case 'settings': {
-          // A helper component for displaying a password requirement
-          const Requirement = ({ label, met }) => (
-            <li style={{ color: met ? '#4caf50' : '#f44336', marginBottom: '4px' }}>
-              {met ? '✓' : '✗'} {label}
-            </li>
-          );
+    // A helper component for displaying a password requirement
+    const Requirement = ({ label, met }) => (
+        <li style={{ color: met ? '#4caf50' : '#f44336', marginBottom: '4px' }}>
+            {met ? '✓' : '✗'} {label}
+        </li>
+    );
 
-          return (
-            <div className="dashboard-content">
-              <div style={{ maxWidth: '600px', margin: '0 auto' }}>
-                <h3 style={{ marginBottom: '30px' }}>Account Settings</h3>
+    // A helper component for the navigation tabs
+    const SettingsTab = ({ label, tabName }) => (
+        <button
+            onClick={() => setActiveSettingsTab(tabName)}
+            style={{
+                padding: '12px 20px',
+                border: 'none',
+                borderBottom: activeSettingsTab === tabName ? '3px solid #094685' : '3px solid transparent',
+                backgroundColor: activeSettingsTab === tabName ? '#f8f9fa' : 'transparent',
+                cursor: 'pointer',
+                fontSize: '16px',
+                fontWeight: activeSettingsTab === tabName ? '600' : 'normal',
+                color: activeSettingsTab === tabName ? '#094685' : '#555',
+                transition: 'all 0.2s ease-in-out'
+            }}
+        >
+            {label}
+        </button>
+    );
+    
+    // This function runs when the "Save Changes" button is clicked.
+    const handleContactUpdate = async () => {
+        setIsSaving(true);
+        console.log("Data to be saved:", contactInfo);
+
+        // TODO: Add your database saving code here.
+        // For example: await db.collection('settings').doc('contact').set(contactInfo);
         
-                {/* Current Account Info */}
-                <div style={{
-                  backgroundColor: '#f8f9fa',
-                  padding: '20px',
-                  borderRadius: '8px',
-                  marginBottom: '30px'
-                }}>
-                  <h4 style={{ margin: '0 0 15px 0', color: '#333' }}>Account Information</h4>
-                  <div style={{ marginBottom: '10px' }}>
-                    <strong>Admin Email:</strong> {currentUserEmail}
-                  </div>
-                  <div style={{ color: '#666', fontSize: '14px' }}>
-                    You can manage your account password below.
-                  </div>
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        alert("Changes have been saved! (Check the console to see the data).");
+        setIsSaving(false);
+    };
+
+    return (
+        <div className="dashboard-content">
+            <div style={{ maxWidth: '700px', margin: '0 auto' }}>
+                <h3 style={{ marginBottom: '20px' }}>Settings</h3>
+
+                {/* Tab Navigation */}
+                <div style={{ display: 'flex', borderBottom: '1px solid #ddd', marginBottom: '30px' }}>
+                    <SettingsTab label="Account Settings" tabName="account" />
+                    <SettingsTab label="Contact & Map" tabName="contact" />
                 </div>
-        
-                {/* Password Change Section */}
-                <div style={{
-                  border: '1px solid #ddd',
-                  borderRadius: '8px',
-                  marginBottom: '20px',
-                  overflow: 'hidden'
-                }}>
-                  <div style={{
-                    padding: '15px 20px',
-                    backgroundColor: '#f8f9fa',
-                    borderBottom: '1px solid #ddd',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center'
-                  }}>
-                    <h4 style={{ margin: 0 }}>Change Password</h4>
-                    <button
-                      onClick={() => {
-                        setShowPasswordForm(!showPasswordForm);
-                        if (showPasswordForm) {
-                           // If closing the form, reset everything
-                          setSettingsForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
-                          setPasswordRequirements({ length: false, uppercase: false, number: false });
-                        }
-                      }}
-                      style={{
-                        padding: '8px 16px',
-                        backgroundColor: showPasswordForm ? '#9e9e9e' : '#094685',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '4px',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      {showPasswordForm ? 'Cancel' : 'Change Password'}
-                    </button>
-                  </div>
-                  
-                  {showPasswordForm && (
-                    <div style={{ padding: '20px' }}>
-                      <div style={{ marginBottom: '15px' }}>
-                        <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
-                          Current Password *
-                        </label>
-                        <input
-                          type="password"
-                          value={settingsForm.currentPassword}
-                          onChange={(e) => setSettingsForm(prev => ({
-                            ...prev,
-                            currentPassword: e.target.value
-                          }))}
-                          placeholder="Enter your current password"
-                          style={{
-                            width: '100%',
-                            padding: '10px',
-                            border: '1px solid #ddd',
-                            borderRadius: '4px',
-                            fontSize: '14px'
-                          }}
-                        />
-                      </div>
-                      
-                      <div style={{ marginBottom: '15px' }}>
-                        <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
-                          New Password *
-                        </label>
-                        <input
-                          type="password"
-                          value={settingsForm.newPassword}
-                          onChange={handleNewPasswordChange} // Use the new handler for real-time validation
-                          placeholder="Enter a new, strong password"
-                          style={{
-                            width: '100%',
-                            padding: '10px',
-                            border: '1px solid #ddd',
-                            borderRadius: '4px',
-                            fontSize: '14px'
-                          }}
-                        />
-                      </div>
 
-                      {/* Real-time Password Requirements Checklist */}
-                      <div style={{ 
-                          padding: '10px', 
-                          backgroundColor: '#f8f9fa', 
-                          borderRadius: '4px', 
-                          marginBottom: '20px',
-                          border: '1px solid #eee'
-                      }}>
-                        <ul style={{ listStyleType: 'none', margin: 0, padding: 0, fontSize: '13px' }}>
-                          <Requirement label="At least 12 characters long" met={passwordRequirements.length} />
-                          <Requirement label="Contains at least one uppercase letter (A-Z)" met={passwordRequirements.uppercase} />
-                          <Requirement label="Contains at least one number (0-9)" met={passwordRequirements.number} />
-                        </ul>
-                      </div>
-                      
-                      <div style={{ marginBottom: '20px' }}>
-                        <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
-                          Confirm New Password *
-                        </label>
-                        <input
-                          type="password"
-                          value={settingsForm.confirmPassword}
-                          onChange={(e) => setSettingsForm(prev => ({
-                            ...prev,
-                            confirmPassword: e.target.value
-                          }))}
-                          placeholder="Confirm your new password"
-                          style={{
-                            width: '100%',
-                            padding: '10px',
+                {/* Conditional Rendering Based on Active Tab */}
+
+                {/* ACCOUNT SETTINGS TAB */}
+                {activeSettingsTab === 'account' && (
+                    <div>
+                        {/* Current Account Info */}
+                        <div style={{
+                            backgroundColor: '#f8f9fa',
+                            padding: '20px',
+                            borderRadius: '8px',
+                            marginBottom: '30px'
+                        }}>
+                            <h4 style={{ margin: '0 0 15px 0', color: '#333' }}>Account Information</h4>
+                            <div style={{ marginBottom: '10px' }}>
+                                <strong>Admin Email:</strong> {currentUserEmail}
+                            </div>
+                            <div style={{ color: '#666', fontSize: '14px' }}>
+                                You can manage your account password below.
+                            </div>
+                        </div>
+
+                        {/* Password Change Section */}
+                        <div style={{
                             border: '1px solid #ddd',
-                            borderRadius: '4px',
-                            fontSize: '14px'
-                          }}
-                        />
-                      </div>
-                      
-                      <button
-                        onClick={handlePasswordChange}
-                        disabled={isUpdating}
-                        style={{
-                          padding: '10px 20px',
-                          backgroundColor: isUpdating ? '#ccc' : '#4caf50',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '4px',
-                          cursor: isUpdating ? 'not-allowed' : 'pointer'
-                        }}
-                      >
-                        {isUpdating ? 'Updating...' : 'Update Password'}
-                      </button>
+                            borderRadius: '8px',
+                            marginBottom: '20px',
+                            overflow: 'hidden'
+                        }}>
+                            <div style={{
+                                padding: '15px 20px',
+                                backgroundColor: '#f8f9fa',
+                                borderBottom: '1px solid #ddd',
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center'
+                            }}>
+                                <h4 style={{ margin: 0 }}>Change Password</h4>
+                                <button
+                                    onClick={() => {
+                                        setShowPasswordForm(!showPasswordForm);
+                                        if (showPasswordForm) {
+                                            // If closing the form, reset everything
+                                            setSettingsForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+                                            setPasswordRequirements({ length: false, uppercase: false, number: false });
+                                        }
+                                    }}
+                                    style={{
+                                        padding: '8px 16px',
+                                        backgroundColor: showPasswordForm ? '#9e9e9e' : '#094685',
+                                        color: 'white',
+                                        border: 'none',
+                                        borderRadius: '4px',
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    {showPasswordForm ? 'Cancel' : 'Change Password'}
+                                </button>
+                            </div>
+
+                            {showPasswordForm && (
+                                <div style={{ padding: '20px' }}>
+                                    {/* ... (The entire password form from your original code goes here) ... */}
+                                    {/* (No changes were needed for the form itself) */}
+                                    <div style={{ marginBottom: '15px' }}>
+                                        <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Current Password *</label>
+                                        <input
+                                            type="password"
+                                            value={settingsForm.currentPassword}
+                                            onChange={(e) => setSettingsForm(prev => ({ ...prev, currentPassword: e.target.value }))}
+                                            placeholder="Enter your current password"
+                                            style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '4px', fontSize: '14px' }}
+                                        />
+                                    </div>
+                                    <div style={{ marginBottom: '15px' }}>
+                                        <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>New Password *</label>
+                                        <input
+                                            type="password"
+                                            value={settingsForm.newPassword}
+                                            onChange={handleNewPasswordChange}
+                                            placeholder="Enter a new, strong password"
+                                            style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '4px', fontSize: '14px' }}
+                                        />
+                                    </div>
+                                    <div style={{ padding: '10px', backgroundColor: '#f8f9fa', borderRadius: '4px', marginBottom: '20px', border: '1px solid #eee' }}>
+                                        <ul style={{ listStyleType: 'none', margin: 0, padding: 0, fontSize: '13px' }}>
+                                            <Requirement label="At least 12 characters long" met={passwordRequirements.length} />
+                                            <Requirement label="Contains at least one uppercase letter (A-Z)" met={passwordRequirements.uppercase} />
+                                            <Requirement label="Contains at least one number (0-9)" met={passwordRequirements.number} />
+                                        </ul>
+                                    </div>
+                                    <div style={{ marginBottom: '20px' }}>
+                                        <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Confirm New Password *</label>
+                                        <input
+                                            type="password"
+                                            value={settingsForm.confirmPassword}
+                                            onChange={(e) => setSettingsForm(prev => ({ ...prev, confirmPassword: e.target.value }))}
+                                            placeholder="Confirm your new password"
+                                            style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '4px', fontSize: '14px' }}
+                                        />
+                                    </div>
+                                    <button
+                                        onClick={handlePasswordChange}
+                                        disabled={isUpdating}
+                                        style={{ padding: '10px 20px', backgroundColor: isUpdating ? '#ccc' : '#4caf50', color: 'white', border: 'none', borderRadius: '4px', cursor: isUpdating ? 'not-allowed' : 'pointer' }}
+                                    >
+                                        {isUpdating ? 'Updating...' : 'Update Password'}
+                                    </button>
+                                </div>
+                            )}
+                        </div>
                     </div>
-                  )}
-                </div>
-        
-                {/* Additional Settings Info */}
-                <div style={{
-                  backgroundColor: '#e3f2fd',
-                  padding: '15px',
-                  borderRadius: '8px',
-                  marginTop: '30px'
-                }}>
-                  <h4 style={{ margin: '0 0 10px 0', color: '#1976d2' }}>Security Information</h4>
-                  <ul style={{ margin: 0, paddingLeft: '20px', color: '#333' }}>
-                    <li>Always use a strong, unique password for your account.</li>
-                    <li>Contact support if you have trouble accessing your account.</li>
-                  </ul>
-                </div>
-              </div>
+                )}
+
+
+                {/* CONTACT & MAP SETTINGS TAB - REVISED AND SIMPLIFIED */}
+                {activeSettingsTab === 'contact' && (
+                    <div>
+                        <div style={{ border: '1px solid #ddd', borderRadius: '8px', overflow: 'hidden' }}>
+                            <div style={{ padding: '15px 20px', backgroundColor: '#f8f9fa', borderBottom: '1px solid #ddd' }}>
+                                <h4 style={{ margin: 0 }}>Edit Public Information</h4>
+                            </div>
+                            <div style={{ padding: '20px' }}>
+                                {/* Contact Number Input */}
+                                <div style={{ marginBottom: '20px' }}>
+                                    <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>Public Contact Number</label>
+                                    <input
+                                        type="tel"
+                                        value={contactInfo.phoneNumber}
+                                        onChange={(e) => setContactInfo(prev => ({ ...prev, phoneNumber: e.target.value }))}
+                                        placeholder="e.g., (123) 456-7890"
+                                        style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '4px', fontSize: '14px' }}
+                                    />
+                                </div>
+
+                                {/* Location Coordinates Inputs */}
+                                <div style={{ marginBottom: '5px' }}>
+                                    <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>Location Coordinates</label>
+                                    <div style={{ display: 'flex', gap: '15px' }}>
+                                        {/* Latitude Input */}
+                                        <div style={{ flex: 1 }}>
+                                            <input
+                                                type="text"
+                                                value={contactInfo.latitude}
+                                                onChange={(e) => setContactInfo(prev => ({ ...prev, latitude: e.target.value }))}
+                                                placeholder="Latitude (e.g., 48.85837)"
+                                                style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '4px', fontSize: '14px' }}
+                                            />
+                                        </div>
+                                        {/* Longitude Input */}
+                                        <div style={{ flex: 1 }}>
+                                            <input
+                                                type="text"
+                                                value={contactInfo.longitude}
+                                                onChange={(e) => setContactInfo(prev => ({ ...prev, longitude: e.target.value }))}
+                                                placeholder="Longitude (e.g., 2.29448)"
+                                                style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '4px', fontSize: '14px' }}
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                                <p style={{ fontSize: '12px', color: '#666', margin: '5px 0 25px 0' }}>
+                                    Right-click your location on Google Maps to copy the coordinates.
+                                </p>
+
+                                {/* Save Button */}
+                                <button
+                                    onClick={handleContactUpdate}
+                                    disabled={isSaving}
+                                    style={{ padding: '10px 20px', backgroundColor: isSaving ? '#ccc' : '#094685', color: 'white', border: 'none', borderRadius: '4px', cursor: isSaving ? 'not-allowed' : 'pointer' }}
+                                >
+                                    {isSaving ? 'Saving...' : 'Save Changes'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
-          );
-        }
+        </div>
+    );
+}
 
         default: {
           return (
