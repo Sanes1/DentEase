@@ -1151,34 +1151,86 @@ const [settingsForm, setSettingsForm] = useState({
            room.lastMessage?.toLowerCase().includes(searchLower);
   });
 
-  const filteredPatients = patients.filter(p => {
-    const q = (patientSearch || "").toLowerCase().trim();
-    const matchesSearch = !q || (
-      (p.userName || "").toLowerCase().includes(q) ||
-      (p.phoneNumber || "").toLowerCase().includes(q) ||
-      (p.address || "").toLowerCase().includes(q) ||
-      (p.lastAppointment || "").toLowerCase().includes(q)
-    );
+ // =================================================================================
+// PASTE THIS ENTIRE BLOCK TO REPLACE YOUR CURRENT PATIENT FILTERING/PAGINATION LOGIC
+// =================================================================================
 
-    const matchesFilter =
-      patientFilter === "all" ? true
-      : (patientFilter === "with" ? (p.lastAppointment && p.lastAppointment !== '-') : false)
-      || (patientFilter === "none" ? (!p.lastAppointment || p.lastAppointment === '-') : false);
+// Define final variables that the table will use. Initialize with safe, empty values.
+let paginatedPatients = [];
+let totalPages = 1;
 
-    return matchesSearch && matchesFilter;
-  });
+// This 'try...catch' block is the most important part.
+// If any code inside it fails, it will NOT crash the app. It will log an error instead.
+try {
+    // DEFENSIVE CHECK: Only run logic if 'patients' and 'appointments' are valid arrays.
+    // This is the primary defense against the white screen on initial load.
+    if (Array.isArray(patients) && Array.isArray(appointments)) {
 
-  const totalPages = Math.max(1, Math.ceil(filteredPatients.length / rowsPerPage));
+        // 1. ENHANCE DATA: Add 'lastService' and 'lastAppointment' to each patient.
+        const enhancedPatients = patients.map(patient => {
+            // Find appointments for this specific patient.
+            // !!! PLEASE DOUBLE-CHECK THIS LINE !!! Is 'appt.userId === patient.id' the correct way to link them?
+            const patientAppointments = appointments.filter(appt => appt && appt.userId === patient.id);
 
-  useEffect(() => {
-    if (currentPage > totalPages) setCurrentPage(totalPages);
-    if (currentPage < 1) setCurrentPage(1);
-  }, [currentPage, totalPages]);
+            // If no appointments are found, return the patient with default values.
+            if (patientAppointments.length === 0) {
+                return { ...patient, lastService: 'None', lastAppointment: '-' };
+            }
 
-  const paginatedPatients = filteredPatients.slice(
-    (currentPage - 1) * rowsPerPage,
-    currentPage * rowsPerPage
-  );
+            // Sort appointments to find the most recent one.
+            patientAppointments.sort((a, b) => new Date(b.appointmentDate || b.date) - new Date(a.appointmentDate || a.date));
+            const lastAppointment = patientAppointments[0];
+
+            // Safely get the values for the new columns.
+            const serviceStr = lastAppointment ? getServicesString(lastAppointment) : 'N/A';
+            const dateValue = lastAppointment ? (lastAppointment.appointmentDate || lastAppointment.date) : null;
+            const dateStr = dateValue ? formatFullDate(dateValue) : '-';
+
+            return { ...patient, lastService: serviceStr, lastAppointment: dateStr };
+        });
+
+        // 2. FILTER DATA: Apply search term and dropdown filter.
+        const filteredPatients = enhancedPatients.filter(p => {
+            const q = (patientSearch || "").toLowerCase().trim();
+            const matchesSearch = !q || (
+              (p.userName || "").toLowerCase().includes(q) ||
+              (p.phoneNumber || "").toLowerCase().includes(q) ||
+              (p.address || "").toLowerCase().includes(q) ||
+              (p.lastAppointment || "").toLowerCase().includes(q) ||
+              (p.lastService || "").toLowerCase().includes(q)
+            );
+
+            const matchesFilter =
+              patientFilter === "all" ? true
+              : (patientFilter === "with" ? (p.lastAppointment && p.lastAppointment !== '-') : false)
+              || (patientFilter === "none" ? (!p.lastAppointment || p.lastAppointment === '-') : false);
+
+            return matchesSearch && matchesFilter;
+        });
+
+        // 3. PAGINATE DATA: Calculate total pages and slice the array for the current page.
+        totalPages = Math.max(1, Math.ceil(filteredPatients.length / rowsPerPage));
+        paginatedPatients = filteredPatients.slice(
+            (currentPage - 1) * rowsPerPage,
+            currentPage * rowsPerPage
+        );
+
+    } // If the data wasn't ready, the code skips to the end, and paginatedPatients remains an empty array.
+
+} catch (error) {
+    // If any error occurred above, this block will run.
+    console.error("FATAL ERROR during patient data processing:", error);
+    // We keep the variables as empty defaults so the rest of the page can still render.
+    paginatedPatients = [];
+    totalPages = 1;
+}
+
+// This useEffect for handling page changes can remain exactly the same.
+useEffect(() => {
+    if (totalPages && currentPage > totalPages) {
+        setCurrentPage(totalPages);
+    }
+}, [currentPage, totalPages]);
 
   const renderContent = () => {
     const today = new Date();
@@ -2042,7 +2094,8 @@ const filteredUpcoming = appointments
                                                                     color: '#6b7280',
                                                                     marginTop: '2px'
                                                                 }}>
-                                                                    {getServicesString(appt)}
+                                                                    {/* MODIFIED: Added appointment time */}
+                                                                    {getServicesString(appt)} at {formatAmPmTime(appt.time) || '-'}
                                                                 </div>
                                                             </div>
                                                         </div>
@@ -2385,6 +2438,20 @@ const filteredUpcoming = appointments
                                             <button className="btn-sm btn-danger" onClick={() => updateAppointmentStatus(appt.id, 'declined')}>Decline</button>
                                         </div>
                                     )}
+                                    {/* ADDED: Cancel button for approved appointments */}
+                                    {appt.status === 'approved' && (
+                                        <button
+                                            className="btn-sm btn-danger"
+                                            style={{
+                                                padding: '6px 10px',
+                                                fontSize: '10px',
+                                                whiteSpace: 'nowrap'
+                                            }}
+                                            onClick={() => updateAppointmentStatus(appt.id, 'declined')}
+                                        >
+                                            Cancel
+                                        </button>
+                                    )}
                                     {appt.status === 'Completed' && !appt.followUpScheduled && (
                                         <button
                                             className="export-btn"
@@ -2458,80 +2525,84 @@ const filteredUpcoming = appointments
 }
         
         case 'patient': {
-          return (
-            <div className="dashboard-content">
-              <div className="patient-controls">
-                <input
-                  type="text"
-                  placeholder="Search patients..."
-                  value={patientSearch}
-                  onChange={(e) => setPatientSearch(e.target.value)}
-                  className="search-input"
-                />
-                <select
-                  className="filter-select"
-                  value={patientFilter}
-                  onChange={(e) => setPatientFilter(e.target.value)}
-                >
-                  <option value="all">All Patients</option>
-                  <option value="with">With Appointments</option>
-                  <option value="none">No Appointments</option>
-                </select>
-              </div>
+  return (
+    <div className="dashboard-content">
+      <div className="patient-controls">
+        <input
+          type="text"
+          placeholder="Search patients..."
+          value={patientSearch}
+          onChange={(e) => setPatientSearch(e.target.value)}
+          className="search-input"
+        />
+        <select
+          className="filter-select"
+          value={patientFilter}
+          onChange={(e) => setPatientFilter(e.target.value)}
+        >
+          <option value="all">All Patients</option>
+          <option value="with">With Appointments</option>
+          <option value="none">No Appointments</option>
+        </select>
+      </div>
 
-              <div className="patient-list">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Name</th>
-                      <th>Phone</th>
-                      <th>Address</th>
-                      <th>Last Appointment</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {paginatedPatients.map(patient => (
-                      <tr key={patient.id}>
-                        <td>{patient.userName}</td>
-                        <td>{formatPhoneNumber(patient.phoneNumber)}</td>
-                        <td>{patient.address}</td>
-                        <td>{patient.lastAppointment}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+      <div className="patient-list">
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Phone</th>
+              <th>Address</th>
+              <th>Last Appointment</th>
+              {/* This is the new column header */}
+              <th>Last Service</th>
+            </tr>
+          </thead>
+          <tbody>
+            {paginatedPatients.map(patient => (
+              <tr key={patient.id}>
+                <td>{patient.userName}</td>
+                <td>{formatPhoneNumber(patient.phoneNumber)}</td>
+                <td>{patient.address || '-'}</td>
+                <td>{patient.lastAppointment}</td>
+                {/* This is the new data cell for the service */}
+                <td>{patient.lastService || '-'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
-              {/* pagination */}
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'center',
-                  marginTop: '15px',
-                  gap: '10px'
-                }}
-              >
-                <button
-                  className="calendar-btn"
-                  disabled={currentPage === 1}
-                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                >
-                  Prev
-                </button>
-                <span style={{ alignSelf: 'center' }}>
-                  Page {currentPage} of {totalPages}
-                </span>
-                <button
-                  className="calendar-btn"
-                  disabled={currentPage === totalPages}
-                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                >
-                  Next
-                </button>
-              </div>
-            </div>
-          );
-        }
+      {/* pagination */}
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'center',
+          marginTop: '15px',
+          gap: '10px'
+        }}
+      >
+        <button
+          className="calendar-btn"
+          disabled={currentPage === 1}
+          onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+        >
+          Prev
+        </button>
+        <span style={{ alignSelf: 'center' }}>
+          Page {currentPage} of {totalPages}
+        </span>
+        <button
+          className="calendar-btn"
+          disabled={currentPage === totalPages}
+          onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+        >
+          Next
+        </button>
+      </div>
+    </div>
+  );
+}
 
 case 'services': {
     const servicesTotalPages = Math.max(1, Math.ceil(services.length / servicesPerPage));
